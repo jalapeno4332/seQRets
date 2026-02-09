@@ -1,0 +1,160 @@
+
+'use client';
+
+import { useState, useRef, DragEvent, useCallback } from 'react';
+import { cn } from '@/lib/utils';
+import { FileUp, File, X } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+
+interface KeyfileUploadProps {
+  onFileRead: (fileContent: string | null) => void;
+  onFileNameChange: (fileName: string | null) => void;
+  fileName: string | null;
+}
+
+export function KeyfileUpload({ onFileRead, onFileNameChange, fileName }: KeyfileUploadProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const handleFile = useCallback((file: File) => {
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast({
+            variant: 'destructive',
+            title: 'File Too Large',
+            description: 'The keyfile size cannot exceed 2MB.',
+        });
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as ArrayBuffer;
+      // Safe Base64 conversion for large files using chunking
+      const u8 = new Uint8Array(result);
+      const CHUNK_SIZE = 0x8000; // 32k
+      let binary = '';
+      for (let i = 0; i < u8.length; i += CHUNK_SIZE) {
+        const chunk = u8.subarray(i, i + CHUNK_SIZE);
+        binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+      }
+      const b64 = btoa(binary);
+
+      onFileRead(b64);
+      onFileNameChange(file.name);
+      toast({
+        title: 'Keyfile Selected',
+        description: `${file.name} has been loaded.`,
+      });
+    };
+    reader.onerror = () => {
+      toast({
+        variant: 'destructive',
+        title: 'File Read Error',
+        description: `Could not read the file ${file.name}.`,
+      });
+      onFileRead(null);
+      onFileNameChange(null);
+    };
+    reader.readAsArrayBuffer(file);
+  }, [onFileRead, onFileNameChange, toast]);
+
+  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files && files.length > 0) {
+      handleFile(files[0]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [handleFile]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files && files.length > 0) {
+      handleFile(files[0]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [handleFile]);
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleRemoveFile = () => {
+    onFileRead(null);
+    onFileNameChange(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    toast({
+        title: 'Keyfile Removed',
+        description: `The keyfile has been cleared.`,
+      });
+  };
+
+  if (fileName) {
+    return (
+        <div className="flex items-center justify-between w-full p-3 border rounded-lg bg-muted/50">
+            <div className="flex items-center gap-3">
+                <File className="w-6 h-6 text-primary" />
+                <div className="flex flex-col">
+                    <span className="text-sm font-medium">{fileName}</span>
+                    <span className="text-xs text-muted-foreground">Keyfile loaded successfully.</span>
+                </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleRemoveFile} className="h-8 w-8">
+                <X className="h-5 w-5" />
+                <span className="sr-only">Remove keyfile</span>
+            </Button>
+        </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'relative flex flex-col items-center justify-center w-full p-6 border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-200 ease-in-out',
+        isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 hover:bg-muted'
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onClick={openFileDialog}
+    >
+      <FileUp className="w-10 h-10 text-muted-foreground mb-3" />
+      <p className="text-base font-medium">Drag & drop your keyfile here</p>
+      <p className="text-sm text-muted-foreground">or click to select a file (2MB limit)</p>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileSelect}
+        accept=".bin,.key"
+      />
+    </div>
+  );
+}
