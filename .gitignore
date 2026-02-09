@@ -30,6 +30,9 @@ pnpm-debug.log*
 /dist/
 packages/*/dist/
 
+# Tauri build output
+packages/desktop/src-tauri/target/
+
 # Vault files (contain encrypted shares — never commit)
 *.seqrets
 
