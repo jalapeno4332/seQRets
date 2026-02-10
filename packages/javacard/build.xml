@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SeQRetsApplet" default="build" basedir=".">
+
+    <description>
+        Build script for the seQRets JavaCard applet.
+        Requires: JDK 17, Apache Ant, ant-javacard.jar in lib/.
+        The JavaCard 3.0.4 SDK is in sdks/oracle_javacard_sdks/jc304_kit/.
+    </description>
+
+    <property name="sdk.dir" value="${basedir}/sdks/oracle_javacard_sdks/jc304_kit" />
+    <property name="src.dir" value="${basedir}/src" />
+    <property name="build.dir" value="${basedir}/build" />
+
+    <!-- Load ant-javacard task -->
+    <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="${basedir}/lib/ant-javacard.jar" />
+
+    <target name="build" description="Build the SeQRets applet CAP file">
+        <mkdir dir="${build.dir}" />
+
+        <javacard jckit="${sdk.dir}">
+            <cap
+                sources="${src.dir}"
+                package="com.seqrets.card"
+                version="1.0"
+                aid="F053515254530100"
+                output="${build.dir}/SeQRetsApplet.cap"
+            >
+                <applet
+                    class="com.seqrets.card.SeQRetsApplet"
+                    aid="F05351525453010000"
+                />
+            </cap>
+        </javacard>
+    </target>
+
+    <target name="clean" description="Remove build artifacts">
+        <delete dir="${build.dir}" />
+    </target>
+
+</project>

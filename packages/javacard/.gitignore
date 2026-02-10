@@ -1,0 +1,6 @@
+# Build tools (download separately)
+sdks/
+lib/*.jar
+
+# Build output
+build/

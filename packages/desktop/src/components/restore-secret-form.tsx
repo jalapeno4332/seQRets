@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { FileUpload } from './file-upload';
-import { KeyRound, Combine, Loader2, CheckCircle2, Eye, EyeOff, XCircle, Copy, RefreshCcw, X, Paperclip, Bot, TextCursorInput, HelpCircle, UploadCloud, Lock, Check, FileDown, ArrowDown, FolderOpen } from 'lucide-react';
+import { KeyRound, Combine, Loader2, CheckCircle2, Eye, EyeOff, XCircle, Copy, RefreshCcw, X, Paperclip, Bot, TextCursorInput, HelpCircle, UploadCloud, Lock, Check, FileDown, ArrowDown, FolderOpen, CreditCard } from 'lucide-react';
 import jsQR from 'jsqr';
 import { useToast } from '@/hooks/use-toast';
 import { RestoreSecretRequest, DecryptInstructionRequest, RestoreSecretResult, EncryptedVaultFile } from '@/lib/types';
@@ -20,6 +20,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import successSound from '@/assets/sound.mp3';
+import { SmartCardDialog } from '@/components/smartcard-dialog';
+import type { CardData } from '@/lib/smartcard';
 
 interface DecodedShare {
     id: string; // Use a unique ID for each share for stable rendering and removal
@@ -54,6 +56,9 @@ export function RestoreSecretForm() {
   const [instructionsFile, setInstructionsFile] = useState<File | null>(null);
   const [instructionsFileName, setInstructionsFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Smart card read dialog state
+  const [isSmartCardOpen, setIsSmartCardOpen] = useState(false);
 
   // Encrypted vault import state
   const [isVaultPasswordDialogOpen, setIsVaultPasswordDialogOpen] = useState(false);
@@ -362,6 +367,45 @@ export function RestoreSecretForm() {
     input.click();
   };
 
+  const handleSmartCardRead = (cardData: CardData) => {
+    if (cardData.data_type === 'share') {
+      // Single share — add it like a manual entry
+      const shareData = cardData.data.trim();
+      if (shareData.startsWith('seQRets|')) {
+        addShare(shareData, `Smart Card${cardData.label ? ` (${cardData.label})` : ''}`, true);
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Share',
+          description: 'The data on the card is not a valid seQRets share.',
+        });
+      }
+    } else if (cardData.data_type === 'vault') {
+      // Vault — parse as JSON and load shares
+      try {
+        const parsed = JSON.parse(cardData.data);
+
+        // Check if encrypted vault
+        if (parsed.version === 2 && parsed.encrypted === true && parsed.salt && parsed.data) {
+          setPendingEncryptedVault(parsed as EncryptedVaultFile);
+          setPendingVaultFileName(`Smart Card${cardData.label ? ` (${cardData.label})` : ''}`);
+          setIsVaultPasswordDialogOpen(true);
+          return;
+        }
+
+        // Unencrypted vault
+        processDecryptedVault(parsed, `Smart Card${cardData.label ? ` (${cardData.label})` : ''}`);
+      } catch {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Vault',
+          description: 'The vault data on the card could not be parsed.',
+        });
+      }
+    }
+    setIsSmartCardOpen(false);
+  };
+
   const handleDecryptVaultImport = () => {
     if (!pendingEncryptedVault || !vaultImportPassword) {
       toast({ variant: 'destructive', title: 'Password Required', description: 'Please enter the vault password.' });
@@ -630,6 +674,22 @@ export function RestoreSecretForm() {
                       </p>
                     </div>
 
+                    <div className="relative flex items-center py-2">
+                      <div className="flex-grow border-t border-muted-foreground/20"></div>
+                      <span className="mx-3 text-xs text-muted-foreground uppercase">or read from a smart card</span>
+                      <div className="flex-grow border-t border-muted-foreground/20"></div>
+                    </div>
+
+                    <div className="rounded-lg border border-dashed border-orange-400/40 bg-orange-50/50 dark:bg-orange-950/20 p-4 space-y-2">
+                      <Button variant="outline" onClick={() => setIsSmartCardOpen(true)} className="w-full border-orange-400/50 hover:bg-orange-100 dark:hover:bg-orange-900/30">
+                        <CreditCard className="mr-2 h-4 w-4 text-orange-600" />
+                        Read from Smart Card
+                      </Button>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Read a single share or full vault from a JavaCard smartcard.
+                      </p>
+                    </div>
+
                     {decodedShares.length > 0 && (
                         <div className="space-y-2">
                             <Label>Added Shares ({uniqueSharesCount})</Label>
@@ -839,6 +899,13 @@ export function RestoreSecretForm() {
           </>
         )}
       </CardContent>
+
+      <SmartCardDialog
+        open={isSmartCardOpen}
+        onOpenChange={setIsSmartCardOpen}
+        mode="read"
+        onDataRead={handleSmartCardRead}
+      />
 
       <Dialog open={isVaultPasswordDialogOpen} onOpenChange={(open) => { if (!isDecryptingVault) { setIsVaultPasswordDialogOpen(open); if (!open) { setPendingEncryptedVault(null); setVaultImportPassword(''); setIsVaultPasswordVisible(false); } } }}>
         <DialogContent className="sm:max-w-md">

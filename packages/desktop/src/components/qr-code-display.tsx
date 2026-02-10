@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { Download, Printer, Sparkles, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Download, Printer, Sparkles, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck, CreditCard } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import JSZip from 'jszip';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SmartCardDialog, SmartCardMode } from '@/components/smartcard-dialog';
 
 interface QrCodeDisplayProps {
   qrCodeData: CreateSharesResult;
@@ -22,6 +23,12 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
   const [qrCodeUris, setQrCodeUris] = useState<(string | null)[]>([]);
   const { toast } = useToast();
   const [isLoadingImages, setIsLoadingImages] = useState(!isTextOnly);
+
+  // Smart card dialog state
+  const [isSmartCardOpen, setIsSmartCardOpen] = useState(false);
+  const [smartCardMode, setSmartCardMode] = useState<SmartCardMode>('write-share');
+  const [smartCardWriteData, setSmartCardWriteData] = useState('');
+  const [smartCardWriteLabel, setSmartCardWriteLabel] = useState('');
 
   // Vault export password dialog state
   const [isVaultDialogOpen, setIsVaultDialogOpen] = useState(false);
@@ -499,6 +506,20 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
                                 Print
                             </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSmartCardMode('write-share');
+                            setSmartCardWriteData(shares[index]);
+                            setSmartCardWriteLabel(getShareTitle(index));
+                            setIsSmartCardOpen(true);
+                          }}
+                          className={cn("col-span-full border-orange-400/50 text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/30")}
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Smart Card
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -511,14 +532,37 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
                     This saves all your encrypted shares into a single <code className="bg-muted px-1 py-0.5 rounded text-xs">.seqrets</code> file.
                     It does <strong>not</strong> contain your secret &mdash; you still need your password to restore.
                 </p>
-                <Button size="lg" onClick={handleExportVaultClick} className="text-white bg-green-600 hover:bg-green-700 w-full sm:w-auto">
-                    <Save className="mr-2 h-5 w-5" /> Export Vault File
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                  <Button size="lg" onClick={handleExportVaultClick} className="text-white bg-green-600 hover:bg-green-700 w-full sm:w-auto">
+                      <Save className="mr-2 h-5 w-5" /> Export Vault File
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => {
+                      setSmartCardMode('write-vault');
+                      setSmartCardWriteData(getVaultJsonString());
+                      setSmartCardWriteLabel(qrCodeData.label || 'Vault');
+                      setIsSmartCardOpen(true);
+                    }}
+                    className="w-full sm:w-auto border-orange-400/50 text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/30"
+                  >
+                    <CreditCard className="mr-2 h-5 w-5" /> Write Vault to Smart Card
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                    Store it on iCloud, Google Drive, or a USB drive. To restore later, go to <strong>Restore Secret</strong> and click <strong>Import Vault File</strong>.
+                    Store it on iCloud, Google Drive, a USB drive, or a smart card. To restore later, go to <strong>Restore Secret</strong> and click <strong>Import Vault File</strong>.
                 </p>
             </div>
         </div>
+
+        <SmartCardDialog
+          open={isSmartCardOpen}
+          onOpenChange={setIsSmartCardOpen}
+          mode={smartCardMode}
+          writeData={smartCardWriteData}
+          writeLabel={smartCardWriteLabel}
+        />
 
         <Dialog open={isVaultDialogOpen} onOpenChange={(open) => { if (!isEncryptingVault) { setIsVaultDialogOpen(open); if (!open) resetVaultDialog(); } }}>
           <DialogContent className="sm:max-w-md">
