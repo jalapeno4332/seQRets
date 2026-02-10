@@ -103,7 +103,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
             <h1 style="font-size: 24px; font-weight: 700; color: #111827; margin-top: 50px; margin-bottom: 40px;">Secret Qard Backup</h1>
 
             <div style="border: 1px solid #E5E7EB; padding: 10px;">
-                ${qrUri ? `<img src="${qrUri}" alt="QR Code" style="width: 10cm; height: 10cm;"/>` : `<div style="width: 10cm; height: 10cm; display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #6b7280; text-align: center;">QR Code not available.<br/>Data is too large.</div>`}
+                ${qrUri ? `<img src="${qrUri}" alt="QR Code" style="width: 10cm; height: 10cm; image-rendering: pixelated;"/>` : `<div style="width: 10cm; height: 10cm; display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #6b7280; text-align: center;">QR Code not available.<br/>Data is too large.</div>`}
             </div>
 
             <div>
@@ -193,7 +193,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     }
 
     try {
-        const canvas = await html2canvas(elementToCapture, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+        const canvas = await html2canvas(elementToCapture, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
         const imageUri = canvas.toDataURL('image/png');
         const link = document.createElement("a");
         link.download = `${getShareTitle(index)}.png`;
@@ -256,7 +256,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
 
                 const elementToCapture = document.getElementById(`qard-to-print-${i}`);
                 if (elementToCapture) {
-                    const canvas = await html2canvas(elementToCapture, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+                    const canvas = await html2canvas(elementToCapture, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
                     const base64Data = canvas.toDataURL('image/png').substring(canvas.toDataURL('image/png').indexOf(',') + 1);
                     zip.file(`${title}.png`, base64Data, { base64: true });
                 }
