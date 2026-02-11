@@ -58,8 +58,8 @@ export default function HomePage() {
               seQRets
             </h1>
           </div>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            <span className="font-normal">Secure. Split. Share.</span>
+          <p className="mt-1 text-lg text-muted-foreground max-w-2xl mx-auto">
+            <span className="font-semibold">Secure. Split. Share.</span>
           </p>
         </header>
 

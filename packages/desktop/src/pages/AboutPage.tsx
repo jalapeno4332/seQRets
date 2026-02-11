@@ -28,8 +28,8 @@ export default function AboutPage() {
                         </h1>
                     </div>
                     <p className="text-lg text-muted-foreground">Version 0.9.0 Pyre (Desktop)</p>
-                    <p className="mt-2 text-muted-foreground max-w-xl mx-auto">
-                        Secure. Split. Share. Encrypt, split, and secure your secrets with QR codes using Shamir's Secret Sharing.
+                    <p className="mt-1 text-muted-foreground max-w-xl mx-auto">
+                        <span className="font-semibold">Secure. Split. Share.</span> Encrypt, split, and secure your secrets with QR codes using Shamir's Secret Sharing.
                     </p>
                 </div>
 
