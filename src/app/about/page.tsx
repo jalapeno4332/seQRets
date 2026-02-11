@@ -26,13 +26,18 @@ export default function AboutPage() {
                 <div className="text-center mb-8">
                     <div className="flex justify-center items-center gap-4 mb-4">
                         <Image src="/icons/icon-512x512.png" alt="seQRets Logo" width={48} height={48} priority />
-                        <h1 className="font-body text-4xl md:text-5xl font-black text-foreground tracking-tighter">
-                            seQRets
-                        </h1>
+                        <div>
+                            <h1 className="font-body text-4xl md:text-5xl font-black text-foreground tracking-tighter">
+                                seQRets
+                            </h1>
+                            <p className="text-right text-sm font-bold text-foreground tracking-wide">
+                                Secure. Split. Share.
+                            </p>
+                        </div>
                     </div>
                     <p className="text-lg text-muted-foreground">Version 0.9.0 Pyre</p>
                     <p className="mt-1 text-muted-foreground max-w-xl mx-auto">
-                        <span className="font-semibold">Secure. Split. Share.</span> Encrypt, split, and secure your secrets with QR codes using Shamir's Secret Sharing.
+                        Encrypt, split, and secure your secrets with QR codes using Shamir's Secret Sharing.
                     </p>
                 </div>
 

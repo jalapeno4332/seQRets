@@ -59,13 +59,15 @@ function App() {
         <header className="text-center mb-6 pt-16 sm:pt-0">
           <div className="flex justify-center items-center gap-4">
             <Image src="/icons/icon-512x512.png" alt="seQRets Logo" width={64} height={64} data-ai-hint="logo" priority />
-            <h1 className="font-body text-5xl md:text-7xl font-black text-foreground tracking-tighter">
-              seQRets
-            </h1>
+            <div>
+              <h1 className="font-body text-5xl md:text-7xl font-black text-foreground tracking-tighter">
+                seQRets
+              </h1>
+              <p className="text-right text-base font-bold text-foreground tracking-wide">
+                Secure. Split. Share.
+              </p>
+            </div>
           </div>
-          <p className="mt-1 text-lg text-muted-foreground max-w-2xl mx-auto">
-            <span className="font-semibold">Secure. Split. Share.</span>
-          </p>
         </header>
 
         <div className="mb-10">
