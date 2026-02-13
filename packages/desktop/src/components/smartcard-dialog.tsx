@@ -1,10 +1,13 @@
 /**
  * SmartCardDialog — Shared dialog for reading/writing to JavaCard smartcards.
  *
+ * Supports multi-item storage: multiple items (shares, vaults, instructions)
+ * can be stored on a single card. New writes append to existing data.
+ *
  * Modes:
  *  - "write-share": Write a single Shamir share to a card
- *  - "write-vault": Write a full vault to a card
- *  - "read":        Read a share or vault from a card
+ *  - "write-vault": Write a full vault or instructions to a card
+ *  - "read":        Read a share or vault from a card (user picks from list)
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -13,19 +16,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CreditCard, ShieldCheck, AlertTriangle, Trash2, CheckCircle2, Lock, Info } from 'lucide-react';
+import { Loader2, CreditCard, ShieldCheck, AlertTriangle, Trash2, CheckCircle2, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import {
   listReaders,
   getCardStatus,
-  writeShareToCard,
-  writeVaultToCard,
-  readCard,
+  writeItemToCard,
+  readCardItem,
   eraseCard,
   verifyPin,
   setPin,
   CardStatus,
-  CardData,
+  CardItem,
 } from '@/lib/smartcard';
 
 export type SmartCardMode = 'write-share' | 'write-vault' | 'read';
@@ -38,8 +41,10 @@ interface SmartCardDialogProps {
   writeData?: string;
   /** Label for the data being written. */
   writeLabel?: string;
+  /** The type of item being written (e.g. "share", "vault", "instructions"). */
+  writeItemType?: string;
   /** Callback when data is successfully read from the card. */
-  onDataRead?: (data: CardData) => void;
+  onDataRead?: (data: CardItem) => void;
 }
 
 export function SmartCardDialog({
@@ -48,6 +53,7 @@ export function SmartCardDialog({
   mode,
   writeData,
   writeLabel = '',
+  writeItemType,
   onDataRead,
 }: SmartCardDialogProps) {
   const { toast } = useToast();
@@ -74,9 +80,11 @@ export function SmartCardDialog({
   const [isReading, setIsReading] = useState(false);
   const [isErasing, setIsErasing] = useState(false);
   const [showEraseConfirm, setShowEraseConfirm] = useState(false);
-  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [actionComplete, setActionComplete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Read mode: item selection
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
 
   // ── Load readers on open ──────────────────────────────────────────
 
@@ -110,9 +118,9 @@ export function SmartCardDialog({
       setVerifiedPin(null);
       setShowPinSetup(false);
       setShowEraseConfirm(false);
-      setShowOverwriteConfirm(false);
       setActionComplete(false);
       setActionError(null);
+      setSelectedItemIndex(null);
     }
   }, [open, loadReaders]);
 
@@ -127,13 +135,17 @@ export function SmartCardDialog({
       const pinToUse = pinOverride !== undefined ? pinOverride : verifiedPin;
       const status = await getCardStatus(r, pinToUse);
       setCardStatus(status);
+      // Auto-select if only 1 item in read mode
+      if (mode === 'read' && status.total_items === 1) {
+        setSelectedItemIndex(0);
+      }
     } catch (e: any) {
       setCardStatus(null);
       setActionError(e?.toString() || 'Failed to read card status');
     } finally {
       setIsLoadingStatus(false);
     }
-  }, [selectedReader, verifiedPin]);
+  }, [selectedReader, verifiedPin, mode]);
 
   useEffect(() => {
     if (selectedReader) {
@@ -185,27 +197,17 @@ export function SmartCardDialog({
   const handleWrite = async () => {
     if (!selectedReader || !writeData) return;
 
-    // Check for overwrite
-    if (cardStatus?.has_data && !showOverwriteConfirm) {
-      setShowOverwriteConfirm(true);
-      return;
-    }
-
     setIsWriting(true);
     setActionError(null);
-    setShowOverwriteConfirm(false);
 
     try {
-      if (mode === 'write-share') {
-        await writeShareToCard(selectedReader, writeData, writeLabel, verifiedPin);
-      } else if (mode === 'write-vault') {
-        await writeVaultToCard(selectedReader, writeData, writeLabel, verifiedPin);
-      }
+      const itemType = writeItemType || (mode === 'write-share' ? 'share' : 'vault');
+      await writeItemToCard(selectedReader, itemType, writeData, writeLabel, verifiedPin);
       setActionComplete(true);
       const dataLabel = writeLabel || (mode === 'write-share' ? 'Share' : 'Vault');
       toast({
         title: 'Written to Smart Card!',
-        description: `${dataLabel} saved to card successfully.`,
+        description: `${dataLabel} added to card successfully.`,
       });
     } catch (e: any) {
       setActionError(e?.toString() || 'Write failed');
@@ -217,18 +219,18 @@ export function SmartCardDialog({
   // ── Read action ───────────────────────────────────────────────────
 
   const handleRead = async () => {
-    if (!selectedReader) return;
+    if (!selectedReader || selectedItemIndex === null) return;
     setIsReading(true);
     setActionError(null);
 
     try {
-      const data = await readCard(selectedReader, verifiedPin);
+      const item = await readCardItem(selectedReader, selectedItemIndex, verifiedPin);
       setActionComplete(true);
       toast({
         title: 'Read from Smart Card!',
-        description: `${data.data_type === 'share' ? 'Share' : 'Vault'} loaded from card${data.label ? ` (${data.label})` : ''}.`,
+        description: `${item.item_type === 'share' ? 'Share' : item.item_type === 'vault' ? 'Vault' : 'Item'} loaded from card${item.label ? ` (${item.label})` : ''}.`,
       });
-      onDataRead?.(data);
+      onDataRead?.(item);
     } catch (e: any) {
       setActionError(e?.toString() || 'Read failed');
     } finally {
@@ -276,6 +278,11 @@ export function SmartCardDialog({
   const description = isWriteMode
     ? `Save your ${writeLabel ? writeLabel.toLowerCase() : (mode === 'write-share' ? 'Shamir share' : 'encrypted vault')} to a JavaCard smartcard for secure physical backup.`
     : 'Load a share or vault from a JavaCard smartcard.';
+
+  // Estimate whether the new item will fit
+  const newItemJsonOverhead = 80;
+  const newItemSize = (writeData?.length || 0) + (writeLabel?.length || 0) + newItemJsonOverhead;
+  const willFit = !cardStatus || cardStatus.free_bytes_estimate >= newItemSize;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!isWriting && !isReading) onOpenChange(v); }}>
@@ -338,7 +345,7 @@ export function SmartCardDialog({
           )}
 
           {cardStatus && !isLoadingStatus && (
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Card Status</span>
                 {cardStatus.pin_set && (
@@ -349,11 +356,18 @@ export function SmartCardDialog({
                 )}
               </div>
               {cardStatus.has_data ? (
-                <div className="text-sm text-muted-foreground">
-                  <span className="capitalize font-medium">{cardStatus.data_type}</span>
-                  {' stored'}
-                  {cardStatus.label && <> &mdash; <span className="font-medium">{cardStatus.label}</span></>}
-                  {' '}({cardStatus.data_length} bytes)
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    {cardStatus.total_items} item{cardStatus.total_items !== 1 ? 's' : ''} stored
+                    {' '}({cardStatus.data_length} bytes used, ~{Math.max(0, cardStatus.free_bytes_estimate)} bytes free)
+                  </p>
+                  {cardStatus.items.map((item) => (
+                    <div key={item.index} className="text-xs text-muted-foreground pl-2 border-l-2 border-accent/30">
+                      <span className="capitalize font-medium">{item.item_type}</span>
+                      {item.label && <> &mdash; {item.label}</>}
+                      <span className="ml-1">({item.data_size}B)</span>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Card is empty — ready for data.</p>
@@ -361,25 +375,43 @@ export function SmartCardDialog({
             </div>
           )}
 
-          {/* ── Different-data-type warning ── */}
-          {isWriteMode && cardStatus && cardStatus.has_data && !actionComplete && (() => {
-            const currentType = cardStatus.data_type; // "share" or "vault"
-            const incomingType = mode === 'write-share' ? 'share' : 'vault';
-            if (currentType !== incomingType) {
-              return (
-                <div className="flex items-start gap-2 rounded-lg border border-accent bg-accent/10 dark:bg-accent/5 p-3">
-                  <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                  <p className="text-sm text-muted-foreground">
-                    This card currently stores <span className="font-medium capitalize">{currentType}</span> data
-                    {cardStatus.label && <> (<span className="font-medium">{cardStatus.label}</span>)</>}.
-                    Writing a <span className="font-medium">{writeTypeLabel.toLowerCase()}</span> will replace it.
-                    Each card can hold one item — use a separate card to keep both.
-                  </p>
-                </div>
-              );
-            }
-            return null;
-          })()}
+          {/* ── Capacity warning ── */}
+          {isWriteMode && cardStatus && !willFit && !actionComplete && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10 p-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                This item (~{newItemSize.toLocaleString()} bytes) may not fit on the card
+                (~{Math.max(0, cardStatus.free_bytes_estimate).toLocaleString()} bytes free).
+                Consider removing existing items first.
+              </p>
+            </div>
+          )}
+
+          {/* ── Item selection for read mode ── */}
+          {isReadMode && cardStatus?.items && cardStatus.items.length > 0 && !actionComplete && !needsPinVerification && (
+            <div className="space-y-2">
+              <Label>Select an item to import</Label>
+              <div className="rounded-md border p-1 max-h-48 overflow-y-auto space-y-0.5">
+                {cardStatus.items.map((item) => (
+                  <button
+                    key={item.index}
+                    onClick={() => setSelectedItemIndex(item.index)}
+                    className={cn(
+                      'w-full text-left text-sm flex items-center justify-between p-2 rounded-md transition-colors',
+                      'hover:bg-muted/50',
+                      selectedItemIndex === item.index && 'bg-accent/20 border border-accent'
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="capitalize font-medium">{item.item_type}</span>
+                      {item.label && <span className="text-muted-foreground truncate max-w-[200px]">&mdash; {item.label}</span>}
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0 ml-2">{item.data_size}B</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── PIN Verification (if needed) ── */}
           {needsPinVerification && (
@@ -455,28 +487,6 @@ export function SmartCardDialog({
             </div>
           )}
 
-          {/* ── Overwrite Confirmation ── */}
-          {showOverwriteConfirm && (
-            <Alert className="border-accent bg-accent/10 dark:bg-accent/5">
-              <AlertTriangle className="h-4 w-4 text-primary" />
-              <AlertDescription>
-                <span className="font-medium">Each card can only hold one item at a time.</span>
-                {' '}This card already contains{' '}
-                <span className="font-medium">{cardStatus?.data_type}</span> data
-                {cardStatus?.label && <> (<span className="font-medium">{cardStatus.label}</span>)</>}.
-                Writing your {writeTypeLabel.toLowerCase()} will replace it.
-                <div className="flex gap-2 mt-2">
-                  <Button size="sm" variant="destructive" onClick={handleWrite}>
-                    Yes, Overwrite
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowOverwriteConfirm(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-
           {/* ── Erase Confirmation ── */}
           {showEraseConfirm && (
             <Alert variant="destructive">
@@ -514,7 +524,7 @@ export function SmartCardDialog({
         {/* ── Action Buttons ── */}
         <DialogFooter className="flex flex-col gap-2 sm:flex-row">
           {/* Write button */}
-          {isWriteMode && !actionComplete && !showOverwriteConfirm && (
+          {isWriteMode && !actionComplete && (
             <Button
               onClick={handleWrite}
               disabled={
@@ -542,6 +552,7 @@ export function SmartCardDialog({
                 !selectedReader ||
                 !cardStatus ||
                 !cardStatus.has_data ||
+                selectedItemIndex === null ||
                 !!needsPinVerification
               }
               className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md"
@@ -555,7 +566,7 @@ export function SmartCardDialog({
           )}
 
           {/* Erase button (always available when card has data) */}
-          {cardStatus?.has_data && !actionComplete && !showEraseConfirm && !showOverwriteConfirm && (
+          {cardStatus?.has_data && !actionComplete && !showEraseConfirm && (
             <Button
               variant="outline"
               size="sm"

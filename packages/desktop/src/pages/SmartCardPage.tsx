@@ -37,7 +37,6 @@ import {
   Lock,
   LockOpen,
   CheckCircle2,
-  Info,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Header } from '@/components/header';
@@ -52,6 +51,7 @@ import {
   setPin,
   changePin,
   eraseCard,
+  deleteCardItem,
   CardStatus,
 } from '@/lib/smartcard';
 
@@ -89,6 +89,10 @@ export default function SmartCardPage() {
 
   // ── Erase state ──────────────────────────────────────────────────
   const [isErasing, setIsErasing] = useState(false);
+
+  // ── Delete item state ──────────────────────────────────────────
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const [deletingItemIndex, setDeletingItemIndex] = useState<number | null>(null);
 
   // ── General state ────────────────────────────────────────────────
   const [actionError, setActionError] = useState<string | null>(null);
@@ -251,6 +255,28 @@ export default function SmartCardPage() {
     }
   };
 
+  // ── Delete single item ──────────────────────────────────────────
+
+  const handleDeleteItem = async (index: number) => {
+    if (!selectedReader) return;
+    setIsDeletingItem(true);
+    setDeletingItemIndex(index);
+    setActionError(null);
+    try {
+      await deleteCardItem(selectedReader, index, verifiedPin);
+      toast({
+        title: 'Item Deleted',
+        description: 'The item has been removed from the card.',
+      });
+      await loadCardStatus();
+    } catch (e: any) {
+      setActionError(e?.toString() || 'Failed to delete item');
+    } finally {
+      setIsDeletingItem(false);
+      setDeletingItemIndex(null);
+    }
+  };
+
   // ── Derived state ────────────────────────────────────────────────
 
   const needsPinUnlock = cardStatus?.pin_set && !cardStatus?.pin_verified && !verifiedPin;
@@ -410,28 +436,68 @@ export default function SmartCardPage() {
                     {/* Data Status */}
                     <div className="text-sm text-muted-foreground">
                       {cardStatus.has_data ? (
-                        <>
-                          <span className="capitalize font-medium">{cardStatus.data_type}</span> stored
-                          {cardStatus.label && (
-                            <>
-                              {' '}
-                              &mdash; <span className="font-medium">{cardStatus.label}</span>
-                            </>
-                          )}{' '}
-                          ({cardStatus.data_length} bytes)
-                        </>
+                        <div className="space-y-2">
+                          <p>
+                            {cardStatus.total_items} item{cardStatus.total_items !== 1 ? 's' : ''} stored
+                            {' '}({cardStatus.data_length} bytes used, ~{Math.max(0, cardStatus.free_bytes_estimate)} bytes free)
+                          </p>
+                          <div className="space-y-1">
+                            {cardStatus.items.map((item) => (
+                              <div
+                                key={item.index}
+                                className="flex items-center justify-between p-2 rounded-md border bg-card text-sm"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="capitalize font-medium">{item.item_type}</span>
+                                  {item.label && (
+                                    <span className="text-muted-foreground truncate">&mdash; {item.label}</span>
+                                  )}
+                                  <span className="text-xs text-muted-foreground shrink-0">({item.data_size}B)</span>
+                                </div>
+                                {!needsPinUnlock && (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
+                                        disabled={isDeletingItem}
+                                      >
+                                        {isDeletingItem && deletingItemIndex === item.index ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-3 w-3" />
+                                        )}
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Item?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Remove &ldquo;{item.label || item.item_type}&rdquo; from this card?
+                                          Other items will be preserved.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => handleDeleteItem(item.index)}
+                                          className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                        >
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ) : (
                         'Card is empty — no data stored.'
                       )}
                     </div>
-
-                    {/* One-item-per-card hint */}
-                    {cardStatus.has_data && (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Info className="h-3.5 w-3.5 shrink-0" />
-                        Each card stores one item at a time. Use a separate card for additional data.
-                      </div>
-                    )}
 
                     <Button
                       variant="outline"
@@ -663,13 +729,13 @@ export default function SmartCardPage() {
                       The following will be permanently destroyed:
                     </p>
                     <ul className="list-disc list-inside text-destructive space-y-0.5">
-                      {cardStatus.has_data && (
-                        <li>
-                          <span className="capitalize">{cardStatus.data_type}</span> data
-                          {cardStatus.label && <> ({cardStatus.label})</>}
-                          {' '}&mdash; {cardStatus.data_length} bytes
+                      {cardStatus.has_data && cardStatus.items.map((item) => (
+                        <li key={item.index}>
+                          <span className="capitalize">{item.item_type}</span>
+                          {item.label && <> ({item.label})</>}
+                          {' '}&mdash; {item.data_size} bytes
                         </li>
-                      )}
+                      ))}
                       {cardStatus.pin_set && <li>PIN protection</li>}
                     </ul>
                   </div>

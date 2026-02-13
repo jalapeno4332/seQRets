@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import successSound from '@/assets/sound.mp3';
 import { SmartCardDialog } from '@/components/smartcard-dialog';
-import type { CardData } from '@/lib/smartcard';
+import type { CardItem } from '@/lib/smartcard';
 
 interface DecodedShare {
     id: string; // Use a unique ID for each share for stable rendering and removal
@@ -341,12 +341,12 @@ export function RestoreSecretForm() {
     input.click();
   };
 
-  const handleSmartCardRead = (cardData: CardData) => {
-    if (cardData.data_type === 'share') {
+  const handleSmartCardRead = (cardItem: CardItem) => {
+    if (cardItem.item_type === 'share') {
       // Single share — add it like a manual entry
-      const shareData = cardData.data.trim();
+      const shareData = cardItem.data.trim();
       if (shareData.startsWith('seQRets|')) {
-        addShare(shareData, `Smart Card${cardData.label ? ` (${cardData.label})` : ''}`, true);
+        addShare(shareData, `Smart Card${cardItem.label ? ` (${cardItem.label})` : ''}`, true);
       } else {
         toast({
           variant: 'destructive',
@@ -354,21 +354,21 @@ export function RestoreSecretForm() {
           description: 'The data on the card is not a valid seQRets share.',
         });
       }
-    } else if (cardData.data_type === 'vault') {
+    } else if (cardItem.item_type === 'vault') {
       // Vault — parse as JSON and load shares
       try {
-        const parsed = JSON.parse(cardData.data);
+        const parsed = JSON.parse(cardItem.data);
 
         // Check if encrypted vault
         if (parsed.version === 2 && parsed.encrypted === true && parsed.salt && parsed.data) {
           setPendingEncryptedVault(parsed as EncryptedVaultFile);
-          setPendingVaultFileName(`Smart Card${cardData.label ? ` (${cardData.label})` : ''}`);
+          setPendingVaultFileName(`Smart Card${cardItem.label ? ` (${cardItem.label})` : ''}`);
           setIsVaultPasswordDialogOpen(true);
           return;
         }
 
         // Unencrypted vault
-        processDecryptedVault(parsed, `Smart Card${cardData.label ? ` (${cardData.label})` : ''}`);
+        processDecryptedVault(parsed, `Smart Card${cardItem.label ? ` (${cardItem.label})` : ''}`);
       } catch {
         toast({
           variant: 'destructive',

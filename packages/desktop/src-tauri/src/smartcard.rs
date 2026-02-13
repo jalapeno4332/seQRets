@@ -2,9 +2,12 @@
 //!
 //! Provides Tauri commands for reading/writing Shamir shares and vault data
 //! to/from JavaCard smartcards via the seQRets applet (AID: F0 53 51 52 54 53 01 00 00).
+//!
+//! Supports multi-item storage: multiple items (shares, vaults, instructions)
+//! are serialized as a JSON array and stored in the card's single data slot.
 
 use pcsc::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // ── Constants ───────────────────────────────────────────────────────────
 
@@ -31,24 +34,40 @@ const CHUNK_SIZE: usize = 240;
 /// Data type constants
 const TYPE_SHARE: u8 = 0x01;
 const TYPE_VAULT: u8 = 0x02;
+const TYPE_MULTI: u8 = 0x03;
+
+/// Approximate usable card capacity in bytes
+const CARD_CAPACITY: usize = 8192;
 
 // ── Serde types for frontend ────────────────────────────────────────────
 
+/// A single item stored on the card.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CardItem {
+    pub item_type: String,
+    pub label: String,
+    pub data: String,
+}
+
+/// Summary of an item (without full data) for status display.
+#[derive(Serialize, Clone)]
+pub struct CardItemSummary {
+    pub index: usize,
+    pub item_type: String,
+    pub label: String,
+    pub data_size: usize,
+}
+
+/// Multi-item card status returned to the frontend.
 #[derive(Serialize, Clone)]
 pub struct CardStatus {
     pub has_data: bool,
     pub data_length: u16,
-    pub data_type: String,
-    pub label: String,
+    pub total_items: usize,
+    pub items: Vec<CardItemSummary>,
     pub pin_set: bool,
     pub pin_verified: bool,
-}
-
-#[derive(Serialize, Clone)]
-pub struct CardData {
-    pub data: String,
-    pub data_type: String,
-    pub label: String,
+    pub free_bytes_estimate: i32,
 }
 
 // ── Helper functions ────────────────────────────────────────────────────
@@ -190,6 +209,105 @@ fn write_data_to_card(
     Ok(())
 }
 
+/// Read the raw data bytes from the card.
+/// Returns (raw_data_bytes, type_byte, label_string).
+/// Must be called after select_applet and verify_pin_if_needed.
+fn read_raw_card_data(card: &Card) -> Result<(Vec<u8>, u8, String), String> {
+    let status_resp = send_apdu(card, CLA, INS_GET_STATUS, 0x00, 0x00, &[])?;
+
+    if status_resp.len() < 6 {
+        return Err("Invalid status response".to_string());
+    }
+
+    let data_length = ((status_resp[0] as u16) << 8) | (status_resp[1] as u16);
+    let data_type_byte = status_resp[2];
+    let label_length = status_resp[5] as usize;
+
+    let label = if label_length > 0 && status_resp.len() >= 6 + label_length {
+        String::from_utf8_lossy(&status_resp[6..6 + label_length]).to_string()
+    } else {
+        String::new()
+    };
+
+    if data_length == 0 {
+        return Ok((Vec::new(), data_type_byte, label));
+    }
+
+    // Read data in chunks
+    let mut all_data: Vec<u8> = Vec::with_capacity(data_length as usize);
+    let mut chunk_index: u8 = 0;
+
+    while all_data.len() < data_length as usize {
+        let chunk = send_apdu(card, CLA, INS_READ_DATA, chunk_index, 0x00, &[])?;
+        if chunk.is_empty() {
+            break;
+        }
+        all_data.extend_from_slice(&chunk);
+        chunk_index += 1;
+
+        // Safety check to prevent infinite loop
+        if chunk_index > 100 {
+            return Err("Too many chunks — data may be corrupted".to_string());
+        }
+    }
+
+    all_data.truncate(data_length as usize);
+    Ok((all_data, data_type_byte, label))
+}
+
+/// Parse card data into a list of CardItem, handling both legacy
+/// single-item format and new multi-item JSON array format.
+fn parse_card_items(raw_data: &[u8], type_byte: u8, label: &str) -> Result<Vec<CardItem>, String> {
+    if raw_data.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let data_string = String::from_utf8(raw_data.to_vec())
+        .map_err(|_| "Card data is not valid UTF-8".to_string())?;
+
+    if type_byte == TYPE_MULTI {
+        // Multi-item format: JSON array of CardItem
+        let items: Vec<CardItem> = serde_json::from_str(&data_string)
+            .map_err(|e| format!("Failed to parse multi-item data: {}", e))?;
+        Ok(items)
+    } else {
+        // Legacy single-item format: wrap in a Vec
+        let item_type = match type_byte {
+            TYPE_SHARE => "share".to_string(),
+            TYPE_VAULT => "vault".to_string(),
+            _ => "unknown".to_string(),
+        };
+        Ok(vec![CardItem {
+            item_type,
+            label: label.to_string(),
+            data: data_string,
+        }])
+    }
+}
+
+/// Serialize a list of CardItem to JSON, then write to card as TYPE_MULTI.
+fn write_items_to_card(card: &Card, items: &[CardItem]) -> Result<(), String> {
+    let json = serde_json::to_string(items)
+        .map_err(|e| format!("Failed to serialize items: {}", e))?;
+    let data_bytes = json.as_bytes();
+
+    // Size check
+    if data_bytes.len() > CARD_CAPACITY {
+        return Err(format!(
+            "Combined data ({} bytes) exceeds card capacity (~{} bytes). Remove some items first.",
+            data_bytes.len(),
+            CARD_CAPACITY
+        ));
+    }
+
+    let summary_label = format!(
+        "{} item{}",
+        items.len(),
+        if items.len() == 1 { "" } else { "s" }
+    );
+    write_data_to_card(card, data_bytes, TYPE_MULTI, &summary_label)
+}
+
 // ── Tauri commands ──────────────────────────────────────────────────────
 
 /// List all available PC/SC readers.
@@ -214,7 +332,7 @@ pub fn list_readers() -> Result<Vec<String>, String> {
     }
 }
 
-/// Get the status of the card in the given reader.
+/// Get the status of the card in the given reader, including item summaries.
 #[tauri::command]
 pub fn get_card_status(reader: String, pin: Option<String>) -> Result<CardStatus, String> {
     let (_ctx, card) = connect_reader(&reader)?;
@@ -240,126 +358,201 @@ pub fn get_card_status(reader: String, pin: Option<String>) -> Result<CardStatus
         String::new()
     };
 
-    let data_type = match data_type_byte {
-        0x01 => "share".to_string(),
-        0x02 => "vault".to_string(),
-        _ => "empty".to_string(),
+    // If there's data, read and parse to get item summaries
+    let (total_items, items) = if data_length > 0 {
+        match read_raw_card_data(&card) {
+            Ok((raw_data, type_byte, raw_label)) => {
+                match parse_card_items(&raw_data, type_byte, &raw_label) {
+                    Ok(parsed_items) => {
+                        let summaries: Vec<CardItemSummary> = parsed_items
+                            .iter()
+                            .enumerate()
+                            .map(|(i, item)| CardItemSummary {
+                                index: i,
+                                item_type: item.item_type.clone(),
+                                label: item.label.clone(),
+                                data_size: item.data.len(),
+                            })
+                            .collect();
+                        (summaries.len(), summaries)
+                    }
+                    Err(_) => {
+                        // Parse failed — show as single unknown item
+                        let fallback_type = match data_type_byte {
+                            TYPE_SHARE => "share".to_string(),
+                            TYPE_VAULT => "vault".to_string(),
+                            _ => "unknown".to_string(),
+                        };
+                        (
+                            1,
+                            vec![CardItemSummary {
+                                index: 0,
+                                item_type: fallback_type,
+                                label: label.clone(),
+                                data_size: data_length as usize,
+                            }],
+                        )
+                    }
+                }
+            }
+            Err(_) => {
+                // Read failed — show minimal status from the status response
+                let fallback_type = match data_type_byte {
+                    TYPE_SHARE => "share".to_string(),
+                    TYPE_VAULT => "vault".to_string(),
+                    _ => "unknown".to_string(),
+                };
+                (
+                    1,
+                    vec![CardItemSummary {
+                        index: 0,
+                        item_type: fallback_type,
+                        label: label.clone(),
+                        data_size: data_length as usize,
+                    }],
+                )
+            }
+        }
+    } else {
+        (0, Vec::new())
     };
+
+    let free_bytes_estimate = CARD_CAPACITY as i32 - data_length as i32;
 
     disconnect_with_reset(card);
 
     Ok(CardStatus {
         has_data: data_length > 0,
         data_length,
-        data_type,
-        label,
+        total_items,
+        items,
         pin_set,
         pin_verified,
+        free_bytes_estimate,
     })
 }
 
-/// Write a single Shamir share to the card.
+/// Write an item to the card, appending to any existing items.
+/// Reads existing items, appends the new one, erases, and writes the combined data.
 #[tauri::command]
-pub fn write_share_to_card(reader: String, share: String, label: String, pin: Option<String>) -> Result<(), String> {
-    let (_ctx, card) = connect_reader(&reader)?;
-    select_applet(&card)?;
-    verify_pin_if_needed(&card, &pin)?;
-    let result = write_data_to_card(&card, share.as_bytes(), TYPE_SHARE, &label);
-    disconnect_with_reset(card);
-    result
-}
-
-/// Write vault JSON data to the card.
-#[tauri::command]
-pub fn write_vault_to_card(
+pub fn write_item_to_card(
     reader: String,
-    vault_json: String,
+    item_type: String,
+    data: String,
     label: String,
     pin: Option<String>,
 ) -> Result<(), String> {
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
     verify_pin_if_needed(&card, &pin)?;
-    let result = write_data_to_card(&card, vault_json.as_bytes(), TYPE_VAULT, &label);
+
+    // Read existing items (if any)
+    let (raw_data, type_byte, existing_label) = read_raw_card_data(&card)?;
+    let mut items = if raw_data.is_empty() {
+        Vec::new()
+    } else {
+        parse_card_items(&raw_data, type_byte, &existing_label)?
+    };
+
+    // Append the new item
+    items.push(CardItem {
+        item_type,
+        label,
+        data,
+    });
+
+    // Write combined items (internally erases first)
+    let result = write_items_to_card(&card, &items);
     disconnect_with_reset(card);
     result
 }
 
-/// Read data from the card (share or vault).
+/// Read all items from the card.
 #[tauri::command]
-pub fn read_card(reader: String, pin: Option<String>) -> Result<CardData, String> {
+pub fn read_card_items(reader: String, pin: Option<String>) -> Result<Vec<CardItem>, String> {
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
     verify_pin_if_needed(&card, &pin)?;
 
-    // Get status first to know how much data to read
-    let status_resp = send_apdu(&card, CLA, INS_GET_STATUS, 0x00, 0x00, &[])?;
+    let (raw_data, type_byte, label) = read_raw_card_data(&card)?;
 
-    if status_resp.len() < 6 {
-        disconnect_with_reset(card);
-        return Err("Invalid status response".to_string());
-    }
-
-    let data_length = ((status_resp[0] as u16) << 8) | (status_resp[1] as u16);
-    let data_type_byte = status_resp[2];
-    let label_length = status_resp[5] as usize;
-
-    if data_length == 0 {
+    if raw_data.is_empty() {
         disconnect_with_reset(card);
         return Err("No data stored on this card.".to_string());
     }
 
-    let label = if label_length > 0 && status_resp.len() >= 6 + label_length {
-        String::from_utf8_lossy(&status_resp[6..6 + label_length]).to_string()
-    } else {
-        String::new()
-    };
+    let items = parse_card_items(&raw_data, type_byte, &label);
+    disconnect_with_reset(card);
+    items
+}
 
-    let data_type = match data_type_byte {
-        0x01 => "share".to_string(),
-        0x02 => "vault".to_string(),
-        _ => "unknown".to_string(),
-    };
+/// Read a single item by index from the card.
+#[tauri::command]
+pub fn read_card_item(
+    reader: String,
+    index: usize,
+    pin: Option<String>,
+) -> Result<CardItem, String> {
+    let (_ctx, card) = connect_reader(&reader)?;
+    select_applet(&card)?;
+    verify_pin_if_needed(&card, &pin)?;
 
-    // Read data in chunks
-    let mut all_data: Vec<u8> = Vec::with_capacity(data_length as usize);
-    let mut chunk_index: u8 = 0;
+    let (raw_data, type_byte, label) = read_raw_card_data(&card)?;
 
-    while all_data.len() < data_length as usize {
-        let chunk = send_apdu(&card, CLA, INS_READ_DATA, chunk_index, 0x00, &[])?;
-
-        if chunk.is_empty() {
-            break;
-        }
-
-        all_data.extend_from_slice(&chunk);
-        chunk_index += 1;
-
-        // Safety check to prevent infinite loop
-        if chunk_index > 100 {
-            disconnect_with_reset(card);
-            return Err("Too many chunks — data may be corrupted".to_string());
-        }
+    if raw_data.is_empty() {
+        disconnect_with_reset(card);
+        return Err("No data stored on this card.".to_string());
     }
 
-    // Trim to exact length
-    all_data.truncate(data_length as usize);
+    let items = parse_card_items(&raw_data, type_byte, &label)?;
+    disconnect_with_reset(card);
 
-    let data_string = match String::from_utf8(all_data) {
-        Ok(s) => s,
-        Err(_) => {
-            disconnect_with_reset(card);
-            return Err("Card data is not valid UTF-8".to_string());
-        }
+    items
+        .get(index)
+        .cloned()
+        .ok_or_else(|| format!("Item index {} out of range (card has {} items)", index, items.len()))
+}
+
+/// Delete a single item by index, rewriting the remaining items.
+#[tauri::command]
+pub fn delete_card_item(
+    reader: String,
+    index: usize,
+    pin: Option<String>,
+) -> Result<(), String> {
+    let (_ctx, card) = connect_reader(&reader)?;
+    select_applet(&card)?;
+    verify_pin_if_needed(&card, &pin)?;
+
+    let (raw_data, type_byte, label) = read_raw_card_data(&card)?;
+
+    if raw_data.is_empty() {
+        disconnect_with_reset(card);
+        return Err("No data stored on this card.".to_string());
+    }
+
+    let mut items = parse_card_items(&raw_data, type_byte, &label)?;
+
+    if index >= items.len() {
+        disconnect_with_reset(card);
+        return Err(format!(
+            "Item index {} out of range (card has {} items)",
+            index,
+            items.len()
+        ));
+    }
+
+    items.remove(index);
+
+    let result = if items.is_empty() {
+        // No items left — just erase the card
+        send_apdu(&card, CLA, INS_ERASE_DATA, 0x00, 0x00, &[]).map(|_| ())
+    } else {
+        write_items_to_card(&card, &items)
     };
 
     disconnect_with_reset(card);
-
-    Ok(CardData {
-        data: data_string,
-        data_type,
-        label,
-    })
+    result
 }
 
 /// Erase all data from the card.

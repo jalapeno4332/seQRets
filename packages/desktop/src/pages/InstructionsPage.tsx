@@ -404,7 +404,7 @@ export default function InstructionsPage() {
                             </p>
                           ) : (
                             <p className="text-xs text-muted-foreground">
-                              One item per card — writing will replace any existing data on the card.
+                              The item will be appended to any existing data on the card.
                             </p>
                           )}
 
@@ -608,6 +608,7 @@ export default function InstructionsPage() {
         mode="write-vault"
         writeData={encryptedResult ? JSON.stringify(encryptedResult) : undefined}
         writeLabel="Inheritance Plan"
+        writeItemType="instructions"
       />
     </main>
   );

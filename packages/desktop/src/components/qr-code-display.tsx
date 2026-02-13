@@ -619,6 +619,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
           mode={smartCardMode}
           writeData={smartCardWriteData}
           writeLabel={smartCardWriteLabel}
+          writeItemType={smartCardMode === 'write-share' ? 'share' : 'vault'}
         />
 
         <Dialog open={isVaultDialogOpen} onOpenChange={(open) => { if (!isEncryptingVault) { setIsVaultDialogOpen(open); if (!open) resetVaultDialog(); } }}>

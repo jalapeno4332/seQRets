@@ -18,9 +18,10 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       smartcard::list_readers,
       smartcard::get_card_status,
-      smartcard::write_share_to_card,
-      smartcard::write_vault_to_card,
-      smartcard::read_card,
+      smartcard::write_item_to_card,
+      smartcard::read_card_items,
+      smartcard::read_card_item,
+      smartcard::delete_card_item,
       smartcard::erase_card,
       smartcard::verify_pin,
       smartcard::set_pin,
