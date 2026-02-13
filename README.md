@@ -28,7 +28,7 @@ To restore your original secret, you must bring a specific number of these Qards
 - Optionally add a **keyfile** as a second factor — both password AND keyfile are required for recovery
 - Split into configurable Qards (e.g., 2-of-3, 3-of-5 threshold)
 - Download Qards as QR code images or export as a `.seqrets` vault file
-- **Write to JavaCard smartcard** — store individual shares or full vaults on JCOP3 hardware (desktop only)
+- **Write to JavaCard smartcard** — store individual shares, full vaults, or encrypted inheritance plans on JCOP3 hardware (desktop only)
 
 ### 🔓 Restore Your Secret
 - **Drag & drop** QR code images from your file system
@@ -44,6 +44,7 @@ To restore your original secret, you must bring a specific number of these Qards
 - Encrypt any file (PDF, DOCX, ODT, TXT) with the same XChaCha20-Poly1305 + Argon2id security
 - Password generator with the same 24-character multi-character-class requirement
 - Optional keyfile support for additional security
+- **Save to File** (as `seqrets-instructions.json`) and/or **Write to Smart Card** (desktop only, if encrypted size ≤ 8 KB)
 - Decrypt tab to restore the original document from the encrypted `.json` file
 - Available on both web and desktop
 
@@ -96,15 +97,16 @@ Argon2id's memory-hardness provides additional quantum resistance, and XChaCha20
 
 ## 💳 JavaCard Smartcard Support
 
-The desktop app supports storing Shamir shares and encrypted vaults on **JCOP3 JavaCard smartcards** (e.g., J3H145), providing tamper-resistant physical backups that survive fire, water, and digital threats.
+The desktop app supports storing Shamir shares, encrypted vaults, and encrypted inheritance plans on **JCOP3 JavaCard smartcards** (e.g., J3H145), providing tamper-resistant physical backups that survive fire, water, and digital threats.
 
 ### Hardware Requirements
 - **Card:** JCOP3 J3H145 or compatible JavaCard 3.0.4+ smartcard (~110 KB usable EEPROM)
 - **Reader:** Any PC/SC-compatible USB smart card reader
 
 ### Features
-- **Write individual shares** or **full vaults** to a card via APDU over PC/SC
+- **Write individual shares**, **full vaults**, or **encrypted inheritance plans** to a card via APDU over PC/SC
 - **Read back** shares or vaults directly from a card into the restore workflow
+- **One item per card** — each card holds a single item; writing replaces existing data
 - **Optional PIN protection** (8-16 characters) — card locks after 5 wrong attempts
 - **Data chunking** — automatically handles payloads larger than the 240-byte APDU limit
 - **Overwrite & erase** confirmations to prevent accidental data loss
@@ -251,7 +253,8 @@ Your API key is stored locally and never sent to any server other than Google's 
 
 1. **Upload** a document with instructions for your heirs (PDF, DOCX, ODT, TXT — up to 5MB)
 2. **Set** a strong password (use the same password as your Qards, or generate a new one)
-3. **Encrypt & Download** — the file is encrypted and saved as `seqrets-instructions.json`
+3. **Encrypt** — the file is encrypted with XChaCha20-Poly1305
+4. **Save** — choose **Save to File** (downloads `seqrets-instructions.json`) and/or **Write to Smart Card** (desktop only, for files under 8 KB)
 
 To decrypt, upload the encrypted `.json` file with the same password (and keyfile if used).
 
