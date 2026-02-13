@@ -134,6 +134,13 @@ fn connect_reader(reader_name: &str) -> Result<(Context, Card), String> {
     Ok((ctx, card))
 }
 
+/// Explicitly disconnect the card with a reset disposition.
+/// This forces the PC/SC subsystem to clear the session state,
+/// preventing stale connections when the same reader is used again.
+fn disconnect_with_reset(card: Card) {
+    let _ = card.disconnect(Disposition::ResetCard);
+}
+
 /// If a PIN is provided, verify it on the current connection.
 /// This must be called in the same connection as the protected operation
 /// because PIN verification state is transient (cleared on applet re-select).
@@ -217,6 +224,7 @@ pub fn get_card_status(reader: String, pin: Option<String>) -> Result<CardStatus
     let resp = send_apdu(&card, CLA, INS_GET_STATUS, 0x00, 0x00, &[])?;
 
     if resp.len() < 6 {
+        disconnect_with_reset(card);
         return Err("Invalid status response from card".to_string());
     }
 
@@ -238,6 +246,8 @@ pub fn get_card_status(reader: String, pin: Option<String>) -> Result<CardStatus
         _ => "empty".to_string(),
     };
 
+    disconnect_with_reset(card);
+
     Ok(CardStatus {
         has_data: data_length > 0,
         data_length,
@@ -254,7 +264,9 @@ pub fn write_share_to_card(reader: String, share: String, label: String, pin: Op
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
     verify_pin_if_needed(&card, &pin)?;
-    write_data_to_card(&card, share.as_bytes(), TYPE_SHARE, &label)
+    let result = write_data_to_card(&card, share.as_bytes(), TYPE_SHARE, &label);
+    disconnect_with_reset(card);
+    result
 }
 
 /// Write vault JSON data to the card.
@@ -268,7 +280,9 @@ pub fn write_vault_to_card(
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
     verify_pin_if_needed(&card, &pin)?;
-    write_data_to_card(&card, vault_json.as_bytes(), TYPE_VAULT, &label)
+    let result = write_data_to_card(&card, vault_json.as_bytes(), TYPE_VAULT, &label);
+    disconnect_with_reset(card);
+    result
 }
 
 /// Read data from the card (share or vault).
@@ -282,6 +296,7 @@ pub fn read_card(reader: String, pin: Option<String>) -> Result<CardData, String
     let status_resp = send_apdu(&card, CLA, INS_GET_STATUS, 0x00, 0x00, &[])?;
 
     if status_resp.len() < 6 {
+        disconnect_with_reset(card);
         return Err("Invalid status response".to_string());
     }
 
@@ -290,6 +305,7 @@ pub fn read_card(reader: String, pin: Option<String>) -> Result<CardData, String
     let label_length = status_resp[5] as usize;
 
     if data_length == 0 {
+        disconnect_with_reset(card);
         return Err("No data stored on this card.".to_string());
     }
 
@@ -321,6 +337,7 @@ pub fn read_card(reader: String, pin: Option<String>) -> Result<CardData, String
 
         // Safety check to prevent infinite loop
         if chunk_index > 100 {
+            disconnect_with_reset(card);
             return Err("Too many chunks — data may be corrupted".to_string());
         }
     }
@@ -328,8 +345,15 @@ pub fn read_card(reader: String, pin: Option<String>) -> Result<CardData, String
     // Trim to exact length
     all_data.truncate(data_length as usize);
 
-    let data_string =
-        String::from_utf8(all_data).map_err(|_| "Card data is not valid UTF-8".to_string())?;
+    let data_string = match String::from_utf8(all_data) {
+        Ok(s) => s,
+        Err(_) => {
+            disconnect_with_reset(card);
+            return Err("Card data is not valid UTF-8".to_string());
+        }
+    };
+
+    disconnect_with_reset(card);
 
     Ok(CardData {
         data: data_string,
@@ -344,8 +368,9 @@ pub fn erase_card(reader: String, pin: Option<String>) -> Result<(), String> {
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
     verify_pin_if_needed(&card, &pin)?;
-    send_apdu(&card, CLA, INS_ERASE_DATA, 0x00, 0x00, &[])?;
-    Ok(())
+    let result = send_apdu(&card, CLA, INS_ERASE_DATA, 0x00, 0x00, &[]);
+    disconnect_with_reset(card);
+    result.map(|_| ())
 }
 
 /// Verify the PIN on the card.
@@ -353,8 +378,9 @@ pub fn erase_card(reader: String, pin: Option<String>) -> Result<(), String> {
 pub fn verify_pin(reader: String, pin: String) -> Result<(), String> {
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
-    send_apdu(&card, CLA, INS_VERIFY_PIN, 0x00, 0x00, pin.as_bytes())?;
-    Ok(())
+    let result = send_apdu(&card, CLA, INS_VERIFY_PIN, 0x00, 0x00, pin.as_bytes());
+    disconnect_with_reset(card);
+    result.map(|_| ())
 }
 
 /// Set initial PIN on the card (only works if no PIN is set).
@@ -367,8 +393,9 @@ pub fn set_pin(reader: String, pin: String) -> Result<(), String> {
 
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
-    send_apdu(&card, CLA, INS_SET_PIN, 0x00, 0x00, pin_bytes)?;
-    Ok(())
+    let result = send_apdu(&card, CLA, INS_SET_PIN, 0x00, 0x00, pin_bytes);
+    disconnect_with_reset(card);
+    result.map(|_| ())
 }
 
 /// Change the PIN on the card (must be verified first).
@@ -386,13 +413,14 @@ pub fn change_pin(reader: String, old_pin: String, new_pin: String) -> Result<()
 
     let (_ctx, card) = connect_reader(&reader)?;
     select_applet(&card)?;
-    send_apdu(
+    let result = send_apdu(
         &card,
         CLA,
         INS_CHANGE_PIN,
         old_pin_bytes.len() as u8,
         0x00,
         &data,
-    )?;
-    Ok(())
+    );
+    disconnect_with_reset(card);
+    result.map(|_| ())
 }

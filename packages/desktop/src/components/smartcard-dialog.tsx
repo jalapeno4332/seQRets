@@ -99,6 +99,9 @@ export function SmartCardDialog({
 
   useEffect(() => {
     if (open) {
+      // Reset reader selection so the useEffect on selectedReader re-fires
+      // when loadReaders auto-selects, triggering a fresh card status read
+      setSelectedReader('');
       loadReaders();
       // Reset state
       setCardStatus(null);
