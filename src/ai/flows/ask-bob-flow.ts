@@ -1,9 +1,8 @@
 
-'use server';
+'use client';
 
-import { ai } from '@/ai/genkit';
-import { AskBobInput, AskBobInputSchema, AskBobOutput } from '@/lib/types';
-import { z } from 'zod';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AskBobInput, AskBobOutput } from '@/lib/types';
 
 const readmeContent = `
 # seQRets: Secure. Split. Share.
@@ -70,7 +69,7 @@ The app guides you through a simple, step-by-step process.
 ### Encrypting a Secret (The "Secure Secret" Tab)
 1.  **Step 1: Enter Your Secret.** Enter the secret you want to protect (e.g., a 12/24 word seed phrase). You can also use the **Seed Phrase Generator** to create a new one. Once done, click **Next Step**.
 2.  **Step 2: Secure Your Secret.** Generate or enter a strong password (24+ characters with mixed character types). For maximum security, you can add a **Keyfile**. When your credentials are set, click **Next Step**.
-3.  **Step 3: Split into Qards.** Choose the total number of Qards to create and how many are required for restoration. When you're ready, click the final button to **Encrypt & Generate** your Qards. You can then download them, export as a vault file, or write to a smart card.
+3.  **Step 3: Split into Qards.** Choose the total number of Qards to create and how many are needed for restoration. When you're ready, click the final button to **Encrypt & Generate** your Qards. You can then download them, export as a vault file, or write to a smart card.
 
 ### Decrypting a Secret (The "Restore Secret" Tab)
 1.  **Step 1: Add Your Qards.** Add the required number of shares using one of these methods:
@@ -153,15 +152,7 @@ const cryptoDetails = `
     *   Per-item management: view stored items, select individual items for import, and delete individual items.
 `;
 
-function createBobPromptAndFlow() {
-  if (!ai) return null;
-
-  const bobPrompt = ai.definePrompt(
-    {
-      name: 'bobPrompt',
-      input: { schema: AskBobInputSchema },
-      model: 'googleai/gemini-2.5-flash',
-      system: `You are Bob, a friendly and expert AI assistant for the seQRets application.
+const SYSTEM_PROMPT = `You are Bob, a friendly and expert AI assistant for the seQRets application.
 Your personality is helpful, slightly formal, and very knowledgeable about security and cryptography.
 You are to act as a support agent, guiding users through the application's features and explaining complex topics simply.
 
@@ -184,52 +175,90 @@ You MUST use the provided context from the seQRets documentation as your primary
 ## CONTEXT: seQRets Documentation ##
 ${readmeContent}
 
-${cryptoDetails}`,
-      prompt: `A user is asking a question. Here is the chat history with the user, followed by their latest question.
+${cryptoDetails}`;
 
-  {{#if history}}
-  ## CHAT HISTORY ##
-  {{#each history}}
-  **{{role}}**:
-  {{content}}
-
-  ---
-  {{/each}}
-  {{/if}}
-
-  ## USER'S QUESTION ##
-  {{question}}`,
-    },
-  );
-
-  const askBobFlow = ai.defineFlow(
-    {
-      name: 'askBobFlow',
-      inputSchema: AskBobInputSchema,
-      outputSchema: z.string(),
-    },
-    async (input) => {
-      try {
-        const response = await bobPrompt(input);
-        return response.text || "I'm sorry, I'm having trouble thinking right now. Please try asking again.";
-      } catch (e: any) {
-        console.error('Error in askBobFlow:', e);
-        if (e.message && e.message.includes('503')) {
-          return "I apologize, but my connection to the AI service is temporarily unavailable. Please try again in a few moments.";
-        }
-        return "I'm sorry, I'm having trouble thinking right now. Please try asking your question again.";
-      }
-    }
-  );
-
-  return askBobFlow;
+function getApiKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('gemini-api-key');
 }
 
-const askBobFlow = createBobPromptAndFlow();
+export function setApiKey(key: string) {
+  localStorage.setItem('gemini-api-key', key);
+}
+
+export function removeApiKey() {
+  localStorage.removeItem('gemini-api-key');
+}
 
 export async function askBob(input: AskBobInput): Promise<AskBobOutput> {
-  if (!askBobFlow) {
-    return "I'm not available right now. To enable Bob, please set a GOOGLE_API_KEY or GEMINI_API_KEY environment variable and restart the application.";
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return "I'm not available right now. To enable Bob, please add your Gemini API key in the settings.";
   }
-  return askBobFlow(input);
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: SYSTEM_PROMPT,
+  });
+
+  // Gemini requires the first history message to have role 'user'.
+  // Strip any leading 'model' messages (e.g. the UI welcome greeting).
+  const history = input.history || [];
+  const firstUserIdx = history.findIndex(m => m.role === 'user');
+  const trimmedHistory = firstUserIdx >= 0 ? history.slice(firstUserIdx) : [];
+
+  const chat = model.startChat({
+    history: trimmedHistory.map(m => ({
+      role: m.role === 'model' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+  });
+
+  try {
+    const result = await chat.sendMessage(input.question);
+    const response = result.response;
+
+    // Check for blocked responses before calling .text()
+    if (response.promptFeedback?.blockReason) {
+      console.warn('Prompt blocked:', response.promptFeedback);
+      return "I'm sorry, I wasn't able to process that question. Could you try rephrasing it?";
+    }
+
+    const candidate = response.candidates?.[0];
+    if (!candidate) {
+      return "I'm sorry, I didn't get a response. Please try again.";
+    }
+
+    // Check for safety or other finish reason blocks
+    const finishReason = candidate.finishReason;
+    if (finishReason && !['STOP', 'MAX_TOKENS'].includes(finishReason)) {
+      console.warn('Response blocked, finishReason:', finishReason);
+      return "I'm sorry, I wasn't able to answer that question. Could you try rephrasing it?";
+    }
+
+    // Safely extract text
+    const text = candidate.content?.parts?.map(p => p.text).join('') || '';
+    if (!text) {
+      return "I'm sorry, I received an empty response. Please try again.";
+    }
+
+    return text;
+  } catch (e: any) {
+    console.error('Bob API error:', e);
+    const msg = e.message || '';
+    if (msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('PERMISSION_DENIED')) {
+      return 'Invalid API key. Please check your Gemini API key and try again.';
+    }
+    if (msg.includes('429') || msg.includes('RATE_LIMIT') || msg.includes('RESOURCE_EXHAUSTED')) {
+      return "Too many requests. Please wait a moment and try again.";
+    }
+    if (msg.includes('503') || msg.includes('UNAVAILABLE')) {
+      return "The AI service is temporarily unavailable. Please try again in a few moments.";
+    }
+    if (msg.includes('404') || msg.includes('NOT_FOUND')) {
+      return "The AI model could not be found. The service may be updating — please try again later.";
+    }
+    return "I'm having trouble thinking right now. Please try asking your question again.";
+  }
 }

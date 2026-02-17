@@ -1,17 +1,5 @@
+// Genkit server-side AI initialization is no longer used.
+// Bob AI now runs client-side using @google/generative-ai directly.
+// This file is kept as a stub to avoid breaking any residual imports.
 
-import {genkit} from 'genkit';
-import {googleAI} from '@genkit-ai/google-genai';
-
-const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
-
-let ai: ReturnType<typeof genkit> | null = null;
-
-if (apiKey) {
-  ai = genkit({
-    plugins: [
-      googleAI({ apiKey }),
-    ],
-  });
-}
-
-export { ai };
+export const ai = null;
