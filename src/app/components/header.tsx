@@ -66,12 +66,12 @@ function MobileMenu({ activeTab, onTabChange }: HeaderProps) {
             <nav className="flex-grow p-4 space-y-2">
                 {isHomePage ? (
                      activeTab === 'create' ? (
-                        <Button variant="ghost" className="w-full justify-start gap-3 p-2" onClick={() => handleLinkClick('restore')}>
+                        <Button variant="ghost" className="w-full justify-start gap-3 p-2 text-base font-normal" onClick={() => handleLinkClick('restore')}>
                             <Combine className="h-5 w-5" />
                             <span>Restore Secret</span>
                         </Button>
                     ) : (
-                        <Button variant="ghost" className="w-full justify-start gap-3 p-2" onClick={() => handleLinkClick('create')}>
+                        <Button variant="ghost" className="w-full justify-start gap-3 p-2 text-base font-normal" onClick={() => handleLinkClick('create')}>
                             <Lock className="h-5 w-5" />
                             <span>Secure Secret</span>
                         </Button>

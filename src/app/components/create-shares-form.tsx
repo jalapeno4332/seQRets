@@ -513,12 +513,12 @@ export function CreateSharesForm() {
         </>
       ) : (
         <>
-            <CardHeader className="flex flex-row justify-between items-center p-10">
-                <div className="flex items-center gap-2">
-                    <CardTitle className="pb-2">Your Encrypted Qards</CardTitle>
+            <CardHeader className="flex flex-row justify-between items-start sm:items-center p-6 sm:p-10 gap-4">
+                <div>
+                    <CardTitle className="pb-2">Your Encrypted Qards{' '}
                     <Popover>
                         <PopoverTrigger asChild>
-                            <button><HelpCircle className="h-4 w-4 text-primary" /></button>
+                            <button className="inline-flex align-middle ml-1"><HelpCircle className="h-4 w-4 text-primary" /></button>
                         </PopoverTrigger>
                         <PopoverContent className="text-sm">
                             <Alert variant="destructive">
@@ -530,8 +530,9 @@ export function CreateSharesForm() {
                             </Alert>
                         </PopoverContent>
                     </Popover>
+                    </CardTitle>
                 </div>
-                <Button onClick={handleReset} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
+                <Button onClick={handleReset} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md flex-shrink-0">
                     <RefreshCcw className="mr-2 h-4 w-4" />
                     Start Over
                 </Button>

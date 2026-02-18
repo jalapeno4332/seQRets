@@ -289,8 +289,8 @@ export default function InstructionsPage() {
           <CardContent className="p-6 pt-6">
             <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); handleEncryptReset(); handleDecryptReset(); }}>
               <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="encrypt"><Lock className="mr-2 h-4 w-4" /> Encrypt Instructions</TabsTrigger>
-                <TabsTrigger value="decrypt"><Download className="mr-2 h-4 w-4" /> Decrypt Instructions</TabsTrigger>
+                <TabsTrigger value="encrypt"><Lock className="mr-2 h-4 w-4" /> Encrypt Plan</TabsTrigger>
+                <TabsTrigger value="decrypt"><Download className="mr-2 h-4 w-4" /> Decrypt Plan</TabsTrigger>
               </TabsList>
 
               {/* ════════ Encrypt Tab ════════ */}
