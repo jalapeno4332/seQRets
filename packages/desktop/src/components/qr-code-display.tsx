@@ -460,7 +460,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
             </Button>
             {!isTextOnly && (
                 <Button onClick={handlePrintAll} className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
-                    <Printer className="mr-2 h-4 w-4" /> Print All
+                    <Printer className="mr-2 h-4 w-4" /> Print All (A5)
                 </Button>
             )}
         </div>
@@ -560,7 +560,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
                         {!isTextOnly && qrCodeUris[index] && (
                             <Button variant="outline" size="sm" onClick={() => handlePrint(index)} disabled={isLoadingImages} className="col-span-2">
                                 <Printer className="mr-2 h-4 w-4" />
-                                Print
+                                Print (A5)
                             </Button>
                         )}
                         <Button
