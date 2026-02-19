@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Lock, KeyRound, Eye, EyeOff, Paperclip, HelpCircle, Loader2, CheckCircle2, X, FileDown, ArrowDown, ShieldCheck, Download, CreditCard, RefreshCcw, Save, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Lock, KeyRound, Eye, EyeOff, Paperclip, HelpCircle, Loader2, CheckCircle2, X, FileDown, ArrowDown, ShieldCheck, Download, CreditCard, RefreshCcw, Save, TriangleAlert, FilePenLine } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Link } from 'react-router-dom';
 import { useTheme } from '@/components/theme-provider';
@@ -22,6 +22,11 @@ import type { RawInstruction, DecryptInstructionRequest, EncryptedInstruction } 
 import { SmartCardDialog } from '@/components/smartcard-dialog';
 import type { CardItem } from '@/lib/smartcard';
 import { saveFileNative, saveTextFileNative, base64ToUint8Array } from '@/lib/native-save';
+import { InheritancePlanForm } from '@/components/inheritance-plan-form';
+import { InheritancePlanViewer } from '@/components/inheritance-plan-viewer';
+import { createBlankPlan } from '@/lib/inheritance-plan-types';
+import type { InheritancePlan } from '@/lib/inheritance-plan-types';
+import { planToRawInstruction, isInheritancePlan, rawInstructionToPlan } from '@/lib/inheritance-plan-utils';
 import logoLight from '@/assets/icons/logo-light.png';
 import logoDark from '@/assets/icons/logo-dark.png';
 
@@ -46,6 +51,8 @@ export default function InstructionsPage() {
   const [activeTab, setActiveTab] = useState('encrypt');
 
   // ── Encrypt state ──
+  const encryptMode = activeTab === 'create' ? 'create' : 'upload';
+  const [inheritancePlan, setInheritancePlan] = useState<InheritancePlan>(createBlankPlan());
   const [encryptStep, setEncryptStep] = useState(1);
   const [instructionsFile, setInstructionsFile] = useState<File | null>(null);
   const [encryptPassword, setEncryptPassword] = useState('');
@@ -73,6 +80,8 @@ export default function InstructionsPage() {
   const [decryptKeyfileName, setDecryptKeyfileName] = useState<string | null>(null);
   const [showDecryptKeyfileSmartCard, setShowDecryptKeyfileSmartCard] = useState(false);
   const [isDecrypting, startDecryptTransition] = useTransition();
+  const [decryptedPlan, setDecryptedPlan] = useState<InheritancePlan | null>(null);
+  const [showPlanViewer, setShowPlanViewer] = useState(false);
 
   const cryptoWorkerRef = useRef<Worker>();
 
@@ -91,8 +100,23 @@ export default function InstructionsPage() {
         toast({ variant: 'destructive', title: 'Encryption Failed', description: payload.message || 'Could not encrypt the instructions file.' });
         startEncryptTransition(() => {});
       } else if (type === 'decryptInstructionsSuccess') {
+        const rawInstruction = payload as RawInstruction;
+
+        // Check if this is an in-app inheritance plan
+        if (isInheritancePlan(rawInstruction)) {
+          const plan = rawInstructionToPlan(rawInstruction);
+          if (plan) {
+            setDecryptedPlan(plan);
+            setShowPlanViewer(true);
+            toast({ title: 'Plan Decrypted!', description: 'Your inheritance plan has been decrypted and is ready to view.' });
+            startDecryptTransition(() => {});
+            return;
+          }
+        }
+
+        // Fallback: existing file save behavior for uploaded files
         const handleSave = async () => {
-          const { fileContent, fileName } = payload;
+          const { fileContent, fileName } = rawInstruction;
           const byteArray = base64ToUint8Array(fileContent);
           const ext = fileName.split('.').pop() || '*';
           const filters = [{ name: `${ext.toUpperCase()} Files`, extensions: [ext] }];
@@ -116,18 +140,32 @@ export default function InstructionsPage() {
 
   // ── Encrypt handlers ──
   const handleEncrypt = async () => {
-    if (!instructionsFile || !encryptPassword || !isEncryptPasswordValid) return;
+    if (!encryptPassword || !isEncryptPasswordValid) return;
     if (encryptUseKeyfile && !encryptKeyfile) {
       toast({ variant: 'destructive', title: 'Missing Keyfile', description: 'Please select a keyfile or disable the keyfile option.' });
       return;
     }
 
-    const base64Content = await fileToBase64(instructionsFile);
-    const instruction: RawInstruction = {
-      fileName: instructionsFile.name,
-      fileContent: base64Content,
-      fileType: instructionsFile.type || 'application/octet-stream',
-    };
+    let instruction: RawInstruction;
+
+    if (encryptMode === 'upload') {
+      if (!instructionsFile) return;
+      const base64Content = await fileToBase64(instructionsFile);
+      instruction = {
+        fileName: instructionsFile.name,
+        fileContent: base64Content,
+        fileType: instructionsFile.type || 'application/octet-stream',
+      };
+    } else {
+      // In-app plan: update lastUpdated and serialize to RawInstruction
+      const finalPlan = {
+        ...inheritancePlan,
+        planInfo: { ...inheritancePlan.planInfo, lastUpdated: new Date().toISOString().split('T')[0] },
+      };
+      setInheritancePlan(finalPlan);
+      instruction = planToRawInstruction(finalPlan);
+    }
+
     startEncryptTransition(() => {
       cryptoWorkerRef.current?.postMessage({
         type: 'encryptInstructions',
@@ -140,20 +178,40 @@ export default function InstructionsPage() {
     });
   };
 
+  // Build a filename from the plan's "Prepared by" field (or fallback to generic)
+  const planFileName = (() => {
+    if (encryptMode !== 'create' || !inheritancePlan.planInfo.preparedBy.trim()) {
+      return 'seqrets-inheritance-plan.json';
+    }
+    const parts = inheritancePlan.planInfo.preparedBy.trim().split(/\s+/);
+    const lastName = parts[parts.length - 1].replace(/[^a-zA-Z0-9-]/g, '');
+    return lastName ? `${lastName}-Inheritance-Plan.json` : 'seqrets-inheritance-plan.json';
+  })();
+
+  const planLabel = (() => {
+    if (encryptMode !== 'create' || !inheritancePlan.planInfo.preparedBy.trim()) {
+      return 'Inheritance Plan';
+    }
+    const parts = inheritancePlan.planInfo.preparedBy.trim().split(/\s+/);
+    const lastName = parts[parts.length - 1];
+    return lastName ? `${lastName} Inheritance Plan` : 'Inheritance Plan';
+  })();
+
   const handleSaveToFile = async () => {
     if (!encryptedResult) return;
     const jsonStr = JSON.stringify(encryptedResult, null, 2);
     const savedPath = await saveTextFileNative(
-      'seqrets-instructions.json',
+      planFileName,
       [{ name: 'JSON Files', extensions: ['json'] }],
       jsonStr,
     );
     if (savedPath) {
-      toast({ title: 'File Saved!', description: 'Saved "seqrets-instructions.json" successfully.' });
+      toast({ title: 'File Saved!', description: `Saved "${planFileName}" successfully.` });
     }
   };
 
   const handleEncryptReset = () => {
+    setInheritancePlan(createBlankPlan());
     setInstructionsFile(null);
     setEncryptPassword('');
     setEncryptUseKeyfile(false);
@@ -191,7 +249,7 @@ export default function InstructionsPage() {
     }
     // Convert the card data string into a File so the existing decrypt flow works unchanged
     const blob = new Blob([cardItem.data], { type: 'application/json' });
-    const file = new File([blob], 'seqrets-instructions.json', { type: 'application/json' });
+    const file = new File([blob], 'seqrets-inheritance-plan.json', { type: 'application/json' });
     setDecryptFile(file);
     setDecryptFileName(`Smart Card: ${cardItem.label || 'Inheritance Plan'}`);
     setShowDecryptSmartCardDialog(false);
@@ -251,6 +309,8 @@ export default function InstructionsPage() {
     setDecryptKeyfile(null);
     setDecryptKeyfileName(null);
     setShowDecryptSmartCardDialog(false);
+    setDecryptedPlan(null);
+    setShowPlanViewer(false);
     setDecryptStep(1);
   };
 
@@ -281,15 +341,16 @@ export default function InstructionsPage() {
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-2">Inheritance Plan</h2>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Encrypt a document with instructions for your heirs, or decrypt a previously encrypted file.
+            Create an inheritance plan or encrypt a document for your heirs. Decrypt and view previously encrypted plans.
           </p>
         </div>
 
         <Card className="mb-8">
           <CardContent className="p-6 pt-6">
             <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); handleEncryptReset(); handleDecryptReset(); }}>
-              <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsList className="grid w-full grid-cols-3 mb-6">
                 <TabsTrigger value="encrypt"><Lock className="mr-2 h-4 w-4" /> Encrypt Plan</TabsTrigger>
+                <TabsTrigger value="create"><FilePenLine className="mr-2 h-4 w-4" /> Create Plan</TabsTrigger>
                 <TabsTrigger value="decrypt"><Download className="mr-2 h-4 w-4" /> Decrypt Plan</TabsTrigger>
               </TabsList>
 
@@ -404,7 +465,7 @@ export default function InstructionsPage() {
                           <Button
                             size="lg"
                             onClick={handleEncrypt}
-                            disabled={isEncrypting || !instructionsFile || !isEncryptPasswordValid || (encryptUseKeyfile && !encryptKeyfile)}
+                            disabled={isEncrypting || (encryptMode === 'upload' && !instructionsFile) || !isEncryptPasswordValid || (encryptUseKeyfile && !encryptKeyfile)}
                             className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md"
                           >
                             {isEncrypting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShieldCheck className="mr-2 h-5 w-5" />}
@@ -485,6 +546,159 @@ export default function InstructionsPage() {
                 })()}
               </TabsContent>
 
+              {/* ════════ Create Plan Tab ════════ */}
+              <TabsContent value="create" className="space-y-8">
+                {/* Step 1: Build Plan */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-lg">1</div>
+                    <h3 className="text-xl font-semibold">Build Your Inheritance Plan</h3>
+                  </div>
+                  <div className="pl-11 space-y-4">
+                    <InheritancePlanForm plan={inheritancePlan} onChange={setInheritancePlan} />
+                    {encryptStep === 1 && (
+                      <div className="flex justify-end pt-2">
+                        <Button onClick={() => setEncryptStep(2)} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
+                          Next Step <ArrowDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 2: Credentials (shared) */}
+                {encryptStep >= 2 && (
+                  <div className="animate-in fade-in duration-500 space-y-8">
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-lg">2</div>
+                        <h3 className="text-xl font-semibold">Provide Credentials</h3>
+                      </div>
+                      <div className="pl-11 space-y-6">
+                        <PasswordGenerator value={encryptPassword} onValueChange={setEncryptPassword} onValidationChange={setIsEncryptPasswordValid} placeholder="Enter the password used for your Qards or generate a new one" />
+                        <div className="space-y-4 rounded-md border p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Paperclip className="h-5 w-5" />
+                              <Label htmlFor="use-keyfile-create" className="text-base font-medium">Use a Keyfile</Label>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button><HelpCircle className="h-4 w-4 text-primary" /></button>
+                                </PopoverTrigger>
+                                <PopoverContent className="text-sm">
+                                  <Alert variant="destructive" className="border-red-500/50 text-red-500 dark:border-red-500 [&>svg]:text-red-500">
+                                    <TriangleAlert className="h-4 w-4" />
+                                    <AlertTitle className="font-bold">CRITICAL: Back Up Your Keyfile!</AlertTitle>
+                                    <AlertDescription>
+                                      You MUST save the keyfile. It is required for recovery and **cannot be generated again.** Store it safely, separate from your Qards. For better obscurity, you can rename the file.
+                                    </AlertDescription>
+                                  </Alert>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                            <Switch id="use-keyfile-create" checked={encryptUseKeyfile} onCheckedChange={setEncryptUseKeyfile} />
+                          </div>
+                          {encryptUseKeyfile && (
+                            <div className="pt-2">
+                              <Tabs className="w-full">
+                                <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 h-auto">
+                                  <TabsTrigger value="generate" className="bg-primary text-primary-foreground border border-primary rounded-md py-2 shadow-sm hover:bg-primary/80 hover:shadow-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md dark:bg-[#e8e1d5] dark:text-black dark:border-[#cbc5ba] dark:hover:bg-primary/80 dark:hover:text-primary-foreground dark:data-[state=active]:bg-primary dark:data-[state=active]:text-primary-foreground">Generate Keyfile</TabsTrigger>
+                                  <TabsTrigger value="upload" className="bg-primary text-primary-foreground border border-primary rounded-md py-2 shadow-sm hover:bg-primary/80 hover:shadow-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md dark:bg-[#e8e1d5] dark:text-black dark:border-[#cbc5ba] dark:hover:bg-primary/80 dark:hover:text-primary-foreground dark:data-[state=active]:bg-primary dark:data-[state=active]:text-primary-foreground">Upload Keyfile</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="generate" className="pt-4">
+                                  <KeyfileGenerator onKeyfileGenerated={setEncryptKeyfile} onSmartCardSave={(label) => { setEncryptKeyfileWriteLabel(label); setShowEncryptKeyfileWriteSmartCard(true); }} />
+                                </TabsContent>
+                                <TabsContent value="upload" className="pt-4">
+                                  <p className="text-sm text-muted-foreground mb-2">Select a file from your device to use as a keyfile. Any file will work, but larger, more random files are more secure.</p>
+                                  <KeyfileUpload onFileRead={setEncryptKeyfile} onFileNameChange={setEncryptKeyfileName} fileName={encryptKeyfileName} onSmartCardLoad={() => setShowEncryptKeyfileSmartCard(true)} />
+                                </TabsContent>
+                              </Tabs>
+                            </div>
+                          )}
+                        </div>
+                        {encryptStep === 2 && (
+                          <div className="flex justify-end pt-2">
+                            <Button onClick={() => setEncryptStep(3)} disabled={!isEncryptPasswordValid || (encryptUseKeyfile && !encryptKeyfile)} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
+                              Next Step <ArrowDown className="ml-2 h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Encrypt */}
+                {encryptStep === 3 && (
+                  <div className="animate-in fade-in duration-500 space-y-8">
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-lg">3</div>
+                        <h3 className="text-xl font-semibold">Encrypt</h3>
+                      </div>
+                      <div className="pl-11 space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Click the button below to encrypt your inheritance plan.
+                        </p>
+                        <div className="flex justify-end">
+                          <Button size="lg" onClick={handleEncrypt} disabled={isEncrypting || !isEncryptPasswordValid || (encryptUseKeyfile && !encryptKeyfile)} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
+                            {isEncrypting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShieldCheck className="mr-2 h-5 w-5" />}
+                            {isEncrypting ? 'Encrypting...' : 'Encrypt'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 4: Save / Write to Card */}
+                {encryptStep >= 4 && encryptedResult && (() => {
+                  const encryptedJson = JSON.stringify(encryptedResult);
+                  const encryptedSizeBytes = new TextEncoder().encode(encryptedJson).length;
+                  const fitsOnCard = encryptedSizeBytes <= 8192;
+                  const sizeDisplay = encryptedSizeBytes < 1024 ? `${encryptedSizeBytes} bytes` : `${(encryptedSizeBytes / 1024).toFixed(1)} KB`;
+                  return (
+                    <div className="animate-in fade-in duration-500 space-y-8">
+                      <Separator />
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-600 text-white font-bold text-lg">
+                            <CheckCircle2 className="h-5 w-5" />
+                          </div>
+                          <h3 className="text-xl font-semibold">Encryption Complete</h3>
+                        </div>
+                        <div className="pl-11 space-y-4">
+                          <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
+                            <p className="text-sm font-medium text-green-500">Your inheritance plan has been encrypted successfully.</p>
+                            <p className="text-xs text-muted-foreground">Encrypted size: {sizeDisplay}</p>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <Button size="lg" onClick={handleSaveToFile} className="flex-1 bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
+                              <Save className="mr-2 h-5 w-5" /> Save to File
+                            </Button>
+                            <Button size="lg" onClick={() => setShowSmartCardDialog(true)} disabled={!fitsOnCard} variant="outline" className="flex-1">
+                              <CreditCard className="mr-2 h-5 w-5" /> Write to Smart Card
+                            </Button>
+                          </div>
+                          {!fitsOnCard ? (
+                            <p className="text-xs text-muted-foreground">Encrypted plan ({sizeDisplay}) exceeds the 8 KB smart card limit. Use Save to File instead.</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">The item will be appended to any existing data on the card.</p>
+                          )}
+                          <div className="flex justify-end pt-2">
+                            <Button variant="ghost" size="sm" onClick={handleEncryptReset}>
+                              <RefreshCcw className="mr-2 h-4 w-4" /> Start Over
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </TabsContent>
+
               {/* ════════ Decrypt Tab ════════ */}
               <TabsContent value="decrypt" className="space-y-8">
                 {/* Step 1: Upload encrypted file */}
@@ -495,7 +709,7 @@ export default function InstructionsPage() {
                   </div>
                   <div className="pl-11 space-y-4">
                     <p className="text-sm text-muted-foreground">
-                      Upload the encrypted <code className="bg-muted px-1 py-0.5 rounded">seqrets-instructions.json</code> file.
+                      Upload your encrypted inheritance plan <code className="bg-muted px-1 py-0.5 rounded">.json</code> file.
                     </p>
                     {decryptFileName ? (
                       <div className="flex items-center justify-between w-full p-3 border rounded-lg bg-muted/50">
@@ -525,7 +739,7 @@ export default function InstructionsPage() {
                           onClick={() => document.getElementById('decrypt-instructions-input')?.click()}
                         >
                           <FileDown className="w-10 h-10 text-muted-foreground mb-3" />
-                          <p className="text-base font-medium">Drag & drop your encrypted instructions file here</p>
+                          <p className="text-base font-medium">Drag & drop your encrypted plan file here</p>
                           <p className="text-sm text-muted-foreground ">or click to browse</p>
                           <input
                             id="decrypt-instructions-input"
@@ -642,7 +856,7 @@ export default function InstructionsPage() {
                 )}
 
                 {/* Step 3: Decrypt & Save */}
-                {decryptStep >= 3 && (
+                {decryptStep >= 3 && !showPlanViewer && (
                   <div className="animate-in fade-in duration-500 space-y-8">
                     <Separator />
                     <div className="space-y-4">
@@ -669,6 +883,36 @@ export default function InstructionsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Plan Viewer (for in-app plans) */}
+                {showPlanViewer && decryptedPlan && (
+                  <div className="animate-in fade-in duration-500 space-y-8">
+                    <Separator />
+                    <InheritancePlanViewer
+                      plan={decryptedPlan}
+                      onSaveAsFile={async () => {
+                        const jsonStr = JSON.stringify(decryptedPlan, null, 2);
+                        const parts = decryptedPlan.planInfo.preparedBy.trim().split(/\s+/);
+                        const lastName = parts.length > 0 ? parts[parts.length - 1].replace(/[^a-zA-Z0-9-]/g, '') : '';
+                        const exportName = lastName ? `${lastName}-Inheritance-Plan.json` : 'Inheritance-Plan.json';
+                        const savedPath = await saveTextFileNative(
+                          exportName,
+                          [{ name: 'JSON Files', extensions: ['json'] }],
+                          jsonStr,
+                        );
+                        if (savedPath) {
+                          toast({ title: 'File Saved!', description: `Saved "${exportName}" successfully.` });
+                        }
+                      }}
+                    />
+                    <div className="flex justify-end pt-2">
+                      <Button variant="ghost" size="sm" onClick={handleDecryptReset}>
+                        <RefreshCcw className="mr-2 h-4 w-4" />
+                        Start Over
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -686,7 +930,7 @@ export default function InstructionsPage() {
         onOpenChange={setShowSmartCardDialog}
         mode="write-vault"
         writeData={encryptedResult ? JSON.stringify(encryptedResult) : undefined}
-        writeLabel="Inheritance Plan"
+        writeLabel={planLabel}
         writeItemType="instructions"
       />
 

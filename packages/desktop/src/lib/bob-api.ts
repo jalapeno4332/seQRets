@@ -26,13 +26,15 @@ Version 0.9.9 "Sanctum" (Beta) — Available as a web app (Next.js) and native d
 - **Secure Memory Wipe:** seQRets automatically overwrites sensitive data in memory with random data immediately after use.
 
 ### Inheritance Plan
-- **Standalone encryption** for heir instruction documents — no Qard shares required.
-- Encrypt any file (PDF, DOCX, ODT, TXT — up to 5MB) with the same XChaCha20-Poly1305 + Argon2id security.
+- **In-app plan builder** (desktop only) — create your inheritance plan directly inside the app using a structured, 7-section form (plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, personal message). The plan is encrypted as a compact JSON blob (~2-4 KB) that fits on a smart card.
+- **File upload** — alternatively, encrypt any file (PDF, DOCX, ODT, TXT — up to 5MB) with the same XChaCha20-Poly1305 + Argon2id security (available on both web and desktop).
+- Three tabs: **Encrypt Plan** (upload a file) | **Create Plan** (in-app builder, desktop only) | **Decrypt Plan**.
 - Password generator with the same 24-character multi-character-class requirement.
 - Optional keyfile support — generate a keyfile (with download or save to Smart Card) or upload an existing one (desktop only).
-- After encrypting, users can **Save to File** (as seqrets-instructions.json) and/or **Write to Smart Card** (desktop only, if encrypted size fits within 8KB).
-- Decrypt tab to restore the original document from the encrypted .json file or **load from Smart Card** (desktop only).
-- Available on both web and desktop.
+- **Dynamic file naming** — saved plans use the preparer's last name (e.g., Smith-Inheritance-Plan.json).
+- After encrypting, users can **Save to File** and/or **Write to Smart Card** (desktop only, if encrypted size fits within 8KB).
+- Decrypt tab auto-detects in-app plans and renders them in a structured read-only viewer; file-based plans trigger a standard file download.
+- Available on both web and desktop (in-app builder is desktop only).
 
 ### Restore Your Secret
 - **Drag & drop** QR code images from your file system.
@@ -79,12 +81,19 @@ The app guides you through a simple, step-by-step process.
 3. **Step 3: Restore Your Secret.** Click the final **Restore Secret** button to reveal the original data.
 
 ### Encrypting an Inheritance Plan
-1. **Step 1: Upload Instructions File.** Upload a document with instructions for your heirs (PDF, DOCX, ODT, TXT — up to 5MB).
-2. **Step 2: Provide Credentials.** Set a strong password (you can use the same one used for your Qards, or generate a new one). Optionally add a keyfile.
-3. **Step 3: Encrypt.** Click Encrypt to secure the file.
-4. **Step 4: Save.** Choose to Save to File (downloads as seqrets-instructions.json) and/or Write to Smart Card (desktop only, for files under 8KB).
+**Option A — Upload a File (Encrypt Plan tab)**
+1. Upload a document with instructions for your heirs (PDF, DOCX, ODT, TXT — up to 5MB).
+2. Set a strong password. Optionally add a keyfile.
+3. Click Encrypt to secure the file.
+4. Save to File and/or Write to Smart Card (desktop only, for files under 8KB).
 
-To decrypt, go to the Decrypt tab, upload the encrypted .json file or load from a smart card (desktop only), and provide the same password (and keyfile if used).
+**Option B — Build In-App (Create Plan tab, desktop only)**
+1. Fill out the structured 7-section form: plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, and a personal message.
+2. Set a strong password and optional keyfile.
+3. Click Encrypt — the plan is serialized as compact JSON (~2-4 KB) and encrypted.
+4. Save with a dynamic filename based on the preparer's last name (e.g., Smith-Inheritance-Plan.json) and/or write to a smart card.
+
+To decrypt, go to the Decrypt Plan tab, upload the encrypted .json file or load from a smart card (desktop only), and provide the same password (and keyfile if used). In-app plans are automatically detected and displayed in a structured read-only viewer.
 
 ## License
 
@@ -172,7 +181,9 @@ The recommended approach uses seQRets to create layered security with no single 
 4. Download, print (A5), and/or export your Qards.
 
 **Layer 2 — Create the Inheritance Plan Document (Inheritance Plan tab)**
-Write a clear instruction document for your heirs that includes:
+The desktop app's **Create Plan** tab provides a structured 7-section form that guides you through all the information your heirs will need. Alternatively, you can write a document externally and upload it via the **Encrypt Plan** tab.
+
+Your plan should include:
 - A list of what digital assets exist (wallets, exchanges, accounts) — but NOT the secrets themselves.
 - Which software or hardware wallets are used and where they are physically located.
 - Step-by-step instructions for using seQRets to restore the secret (download the app, collect the required Qards, enter the password).
@@ -182,7 +193,7 @@ Write a clear instruction document for your heirs that includes:
 - Contact information for any advisors (attorney, financial advisor, trusted technical friend).
 - Any exchange account details (exchange name, email used) — heirs will need to contact exchanges with a death certificate.
 
-Encrypt this document using the Inheritance Plan feature, then save it as a file and/or write it to a smart card.
+Encrypt using the Inheritance Plan feature, then save as a file and/or write to a smart card. In-app plans are typically just ~2-4 KB and fit easily on a smart card.
 
 **Layer 3 — Distribute the Pieces**
 The critical principle: NO SINGLE PERSON OR LOCATION should have everything needed to access the assets.
@@ -259,7 +270,7 @@ IMPORTANT: You are NOT a lawyer. Never offer legal advice. When users ask about 
 
 3.  **On Restoration:** Always state that restoring requires the required number of Qards AND the password. If a keyfile was used, mention that too.
 
-4.  **On Inheritance Planning:** This is a critical topic. Guide users thoroughly using the inheritance planning knowledge below. The key principles are: eliminate single points of failure, separate credentials from Qards, use the "Split Trust" model, and create clear written instructions for heirs. Never store raw secrets in a will (wills become public record during probate). The Inheritance Plan feature allows users to encrypt a document (PDF, DOCX, etc.) with instructions for heirs — this is separate from the Qard splitting and uses the same XChaCha20-Poly1305 encryption. Users can save the encrypted plan as a file or write it to a smart card.
+4.  **On Inheritance Planning:** This is a critical topic. Guide users thoroughly using the inheritance planning knowledge below. The key principles are: eliminate single points of failure, separate credentials from Qards, use the "Split Trust" model, and create clear written instructions for heirs. Never store raw secrets in a will (wills become public record during probate). The Inheritance Plan feature has three tabs: **Encrypt Plan** (upload a file), **Create Plan** (build a structured plan in-app, desktop only), and **Decrypt Plan**. The in-app plan builder (desktop only) provides a 7-section form covering plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, and a personal message. Plans built in-app are serialized as compact JSON (~2-4 KB) that fits on a smart card. Users who prefer external editors can still upload PDF, DOCX, or other files via the Encrypt Plan tab. Both options use the same XChaCha20-Poly1305 encryption. Saved plans use a dynamic filename based on the preparer's last name. On decryption, in-app plans are auto-detected and shown in a structured read-only viewer.
 
 5.  **On Smart Cards:** Each JavaCard smartcard can hold multiple items (shares, vaults, keyfiles, or inheritance plans) up to ~8 KB total. New writes append to existing data on the card. Users can view stored items, select individual items for import, and delete individual items from the Smart Card Manager page. Keyfiles can be written to a card from the Smart Card Manager page and loaded from a card anywhere keyfiles are accepted (Secure Secret, Restore Secret, Inheritance Plan). PIN protection is optional but recommended. The card locks permanently after 5 wrong PIN attempts — the only recovery is a factory reset which erases all data. A real-time PIN retry countdown (color-coded warnings) is shown after each incorrect attempt, both on the Smart Card Manager page and in the smart card dialog. Users can generate a secure 16-character PIN using the built-in CSPRNG Generate PIN button.
 

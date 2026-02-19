@@ -85,13 +85,15 @@ Purchase an official release and receive:
 - Success sound plays on each accepted share
 
 ### 📜 Inheritance Plan
-- **Standalone encryption** for heir instruction documents — no Qard shares required
-- Encrypt any file (PDF, DOCX, ODT, TXT) with the same XChaCha20-Poly1305 + Argon2id security
+- **In-app plan builder** (desktop only) — create your inheritance plan directly inside the app using a structured, 7-section form. No need to type sensitive information into external editors. The plan is encrypted natively as a compact JSON blob (~2-4 KB) that fits on a smart card.
+- **File upload** — alternatively, encrypt any file (PDF, DOCX, ODT, TXT) with the same XChaCha20-Poly1305 + Argon2id security (available on both web and desktop)
+- Three tabs: **Encrypt Plan** (upload a file) | **Create Plan** (in-app builder, desktop only) | **Decrypt Plan**
 - Password generator with the same 24-character multi-character-class requirement
 - Optional keyfile support — generate a keyfile (with download or save to Smart Card) or upload an existing one (desktop only)
-- **Save to File** (as `seqrets-instructions.json`) and/or **Write to Smart Card** (desktop only, if encrypted size ≤ 8 KB)
-- Decrypt tab to restore the original document from the encrypted `.json` file or **load from Smart Card** (desktop only)
-- Available on both web and desktop
+- **Dynamic file naming** — saved plans use the preparer's last name (e.g., `Smith-Inheritance-Plan.json`) for easy identification
+- **Save to File** and/or **Write to Smart Card** (desktop only, if encrypted size ≤ 8 KB)
+- Decrypt tab auto-detects in-app plans and renders them in a structured read-only viewer; file-based plans trigger a standard file download
+- Available on both web and desktop (in-app builder is desktop only)
 
 ### 🛠️ Helper Tools
 - **Password Generator** — cryptographically secure 32-character passwords (88-character charset)
@@ -316,12 +318,19 @@ Your API key is stored locally and never sent to any server other than Google's 
 
 ### 📜 Encrypting an Inheritance Plan
 
+**Option A — Upload a File (Encrypt Plan tab)**
 1. **Upload** a document with instructions for your heirs (PDF, DOCX, ODT, TXT — up to 5MB)
 2. **Set** a strong password (use the same password as your Qards, or generate a new one)
 3. **Encrypt** — the file is encrypted with XChaCha20-Poly1305
-4. **Save** — choose **Save to File** (downloads `seqrets-instructions.json`) and/or **Write to Smart Card** (desktop only, for files under 8 KB)
+4. **Save** — choose **Save to File** and/or **Write to Smart Card** (desktop only, for files under 8 KB)
 
-To decrypt, upload the encrypted `.json` file or **load from a smart card** (desktop only), then provide the same password (and keyfile if used).
+**Option B — Build In-App (Create Plan tab, desktop only)**
+1. **Fill out** the structured 7-section form: plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, and a personal message
+2. **Set** a strong password and optional keyfile
+3. **Encrypt** — the plan is serialized as compact JSON (~2-4 KB) and encrypted
+4. **Save** — saved with a dynamic filename based on the preparer's last name (e.g., `Smith-Inheritance-Plan.json`) and/or written to a smart card
+
+To decrypt, go to the **Decrypt Plan** tab, upload the encrypted `.json` file or **load from a smart card** (desktop only), and provide the same password (and keyfile if used). In-app plans are automatically detected and displayed in a structured read-only viewer.
 
 ## 🏛️ Inheritance Planning Guide
 
@@ -351,7 +360,7 @@ The recommended approach creates **layered security with no single point of fail
 
 ### What to Put in Your Inheritance Plan Document
 
-Your encrypted instruction document should include:
+The desktop app's **Create Plan** tab provides a structured form covering all of these sections. Alternatively, your encrypted instruction document should include:
 - **Asset inventory** — list of wallets, exchanges, and holdings (not the secrets themselves)
 - **Recovery instructions** — step-by-step guide for using seQRets to restore the secret
 - **Qard locations** — where each Qard is physically stored and who holds it
