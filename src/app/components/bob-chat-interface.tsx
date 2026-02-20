@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Bot, Loader2, Send, User, ExternalLink, KeyRound, Eraser } from "lucide-react";
+import { Bot, Loader2, Send, User, ExternalLink, KeyRound, Eraser, TriangleAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { askBob, removeApiKey } from '@/ai/flows/ask-bob-flow';
 import { AskBobInput } from '@/lib/types';
@@ -175,6 +175,10 @@ export function BobChatInterface({ initialMessage, showLinkToFullPage = false }:
 
     return (
         <div className="flex flex-col h-full">
+            <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 mb-3 text-xs text-amber-600 dark:text-amber-400">
+                <TriangleAlert className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                <span><strong>Bob is for inheritance planning &amp; app support only.</strong> Never enter seed phrases, passwords, private keys, or any sensitive data — your messages are sent to Google&apos;s Gemini API.</span>
+            </div>
             <ScrollArea className="flex-grow h-0 pr-4" viewportRef={viewportRef}>
                 <div className="space-y-6">
                 {conversation.map((chat, index) => (
@@ -242,16 +246,18 @@ export function BobChatInterface({ initialMessage, showLinkToFullPage = false }:
                         </Link>
                     </Button>
                 )}
-                <Button
-                    variant="link"
-                    size="sm"
-                    onClick={handleClearChat}
-                    disabled={conversation.length <= 1}
-                    className="text-muted-foreground hover:text-foreground"
-                >
-                    <Eraser className="mr-1 h-3 w-3" />
-                    Clear Chat
-                </Button>
+                {!showLinkToFullPage && (
+                    <Button
+                        variant="link"
+                        size="sm"
+                        onClick={handleClearChat}
+                        disabled={conversation.length <= 1}
+                        className="text-muted-foreground hover:text-foreground"
+                    >
+                        <Eraser className="mr-1 h-3 w-3" />
+                        Clear Chat
+                    </Button>
+                )}
                 <Button
                     variant="link"
                     size="sm"
