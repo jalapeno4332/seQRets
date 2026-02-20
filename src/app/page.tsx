@@ -13,6 +13,7 @@ import Link from "next/link";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { BobChatInterface } from "./components/bob-chat-interface";
 import { BitcoinTicker } from "./components/bitcoin-ticker";
+import { ConnectionStatus } from "./components/connection-status";
 import { WelcomeGuide } from "./components/welcome-guide";
 import { useTheme } from "next-themes";
 
@@ -99,7 +100,8 @@ function App() {
         <footer className="text-center mt-12 mb-16 text-sm text-muted-foreground">
           <p>&copy; {new Date().getFullYear()} seQRets. All rights reserved.</p>
           <p className="mt-1">Version 0.9.9 🔐 Sanctum — <em>Beta</em></p>
-          <p className="mt-1">Your security is your responsibility. Use with caution.</p>
+          <p className="mt-1">All data is processed locally. Your security is your responsibility.</p>
+          <p className="mt-1"><ConnectionStatus /></p>
         </footer>
       </div>
     </main>

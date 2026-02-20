@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { RawInstruction, DecryptInstructionRequest } from '@/lib/types';
+import { ConnectionStatus } from '../components/connection-status';
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -526,7 +527,8 @@ export default function InstructionsPage() {
 
         <footer className="text-center text-sm text-muted-foreground mt-8 mb-16">
           <p>&copy; {new Date().getFullYear()} seQRets. All rights reserved.</p>
-          <p className="mt-1">Your security is your responsibility. Use with caution.</p>
+          <p className="mt-1">All data is processed locally. Your security is your responsibility.</p>
+          <p className="mt-1"><ConnectionStatus /></p>
         </footer>
       </div>
     </main>

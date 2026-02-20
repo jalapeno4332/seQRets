@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowLeft, Shield, Lock, Key, QrCode, Github } from "lucide-react";
 import Link from "next/link";
 import { Header } from "../components/header";
+import { ConnectionStatus } from "../components/connection-status";
 import Image from "next/image";
 import { useTheme } from "next-themes";
 
@@ -121,7 +122,8 @@ export default function AboutPage() {
 
                 <footer className="text-center text-sm text-muted-foreground mt-8 mb-16">
                     <p>&copy; {new Date().getFullYear()} seQRets. All rights reserved.</p>
-                    <p className="mt-1">Your security is your responsibility. Use with caution.</p>
+                    <p className="mt-1">All data is processed locally. Your security is your responsibility.</p>
+                    <p className="mt-1"><ConnectionStatus /></p>
                 </footer>
             </div>
         </main>
