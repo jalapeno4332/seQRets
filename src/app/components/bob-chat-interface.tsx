@@ -15,6 +15,9 @@ import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+
+const BOB_DISCLAIMER_KEY = 'bob-disclaimer-acknowledged';
 
 type ChatMessage = {
     role: 'user' | 'model';
@@ -75,6 +78,21 @@ export function BobChatInterface({ initialMessage, showLinkToFullPage = false }:
         if (typeof window === 'undefined') return false;
         return !!getApiKey();
     });
+    const [showDisclaimer, setShowDisclaimer] = useState(() => {
+        if (typeof window === 'undefined') return false;
+        try {
+            return !localStorage.getItem(BOB_DISCLAIMER_KEY);
+        } catch {
+            return true;
+        }
+    });
+
+    const handleAcknowledgeDisclaimer = () => {
+        try {
+            localStorage.setItem(BOB_DISCLAIMER_KEY, 'true');
+        } catch { /* ignore */ }
+        setShowDisclaimer(false);
+    };
 
     // Scroll the chat viewport to the bottom
     const scrollToBottom = () => {
@@ -175,10 +193,26 @@ export function BobChatInterface({ initialMessage, showLinkToFullPage = false }:
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 mb-3 text-xs text-amber-600 dark:text-amber-400">
-                <TriangleAlert className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                <span><strong>Bob is for inheritance planning &amp; app support only.</strong> Never enter seed phrases, passwords, private keys, or any sensitive data — your messages are sent to Google&apos;s Gemini API.</span>
-            </div>
+            <Dialog open={showDisclaimer} onOpenChange={() => {}}>
+                <DialogContent className="sm:max-w-sm" onInteractOutside={(e) => e.preventDefault()}>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <TriangleAlert className="h-5 w-5 text-amber-500" />
+                            Before You Chat With Bob
+                        </DialogTitle>
+                        <DialogDescription className="pt-2 text-left">
+                            <strong>Bob is for inheritance planning &amp; app support only.</strong>
+                            <br /><br />
+                            Never enter seed phrases, passwords, private keys, or any other sensitive data — your messages are sent to Google&apos;s Gemini API and are not private.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button onClick={handleAcknowledgeDisclaimer} className="w-full">
+                            I Understand
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <ScrollArea className="flex-grow h-0 pr-4" viewportRef={viewportRef}>
                 <div className="space-y-6">
                 {conversation.map((chat, index) => (
