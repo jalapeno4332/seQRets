@@ -12,13 +12,29 @@
 
 seQRets is a hyper-secure, open-source application designed to protect your most sensitive digital information — from crypto seed phrases and private keys to passwords and other confidential data. It uses **Shamir's Secret Sharing** to split your secret into multiple QR codes called **Qards**.
 
-To restore your original secret, you must bring a specific number of these Qards back together. This eliminates the single point of failure associated with storing secrets in one location, providing a robust solution for personal backup and cryptocurrency inheritance planning.
+To restore your original secret, you must bring a specific number of these Qards back together. This eliminates the single point of failure associated with storing secrets in one location, providing a robust solution for personal backup and cryptocurrency inheritance planning. Everything runs locally — your secrets are never transmitted to any server.
+
+> 🛡️ **Your secrets never leave your device.** All encryption, splitting, and decryption happens entirely in your browser (web) or on your machine (desktop). No servers, no cloud, no accounts, no telemetry. seQRets is [open source](https://github.com/jalapeno4332/seQRets) — audit every line.
 
 > **Version 0.9.9 "Sanctum"** (*Beta*) — Available as a web app (Next.js) and native desktop app (Tauri + Vite).
 
 ## ⚠️ Warning
 
 **Your security is your responsibility.** seQRets gives you full control over your digital assets. Misplacing your password or the required number of Qards can result in the **permanent loss** of your secret. The developers have no access to your data, cannot recover your password, and cannot restore your secrets. Manage your Qards and password with extreme care.
+
+## 🤔 Why Not Just Encrypt a USB Drive?
+
+Encrypting a USB drive is better than nothing — but it has critical weaknesses that seQRets solves:
+
+| | Encrypted USB Drive | seQRets (Shamir's Secret Sharing) |
+|---|---|---|
+| **Single point of failure** | Drive lost, damaged, or stolen = everything gone | Split across multiple Qards — survive the loss of any piece |
+| **One password = full access** | Anyone with the password gets everything | Need the threshold of Qards AND the password — layered defense |
+| **Inheritance** | Must trust one person with the drive + password | Distribute Qards to multiple people/locations — no single person has full access |
+| **Disaster resilience** | One fire, flood, or theft can destroy the only copy | Qards distributed across locations survive localized disasters |
+| **Stolen share** | N/A — it's all-or-nothing | A single Qard is indistinguishable from random noise without the other Qards + password |
+
+**The core insight:** seQRets doesn't just encrypt your secret — it *eliminates single points of failure* by splitting the encrypted data so that no single person, location, or device holds enough to compromise it.
 
 ## 📦 Get seQRets
 
@@ -74,6 +90,7 @@ Purchase an official release and receive:
 - Split into configurable Qards (e.g., 2-of-3, 3-of-5 threshold)
 - Download Qards as QR code images or export as a `.seqrets` vault file
 - **Write to JavaCard smartcard** — store individual shares, full vaults, keyfiles, or encrypted inheritance plans on JCOP3 hardware (desktop only)
+- **100% offline-capable** — works without an internet connection. No accounts, no cloud, no telemetry. The only optional network call is the Bob AI assistant (user-provided API key).
 
 ### 🔓 Restore Your Secret
 - **Drag & drop** QR code images from your file system
