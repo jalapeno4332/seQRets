@@ -45,7 +45,7 @@ function App() {
                     Ask Bob
                 </Button>
               </PopoverTrigger>
-               <PopoverContent align="start" className="w-96 h-[32rem]">
+               <PopoverContent align="start" className="w-96 h-[32rem] dark:bg-[#2b2728]">
                   <BobChatInterface
                     initialMessage="Hi! I'm Bob, your AI assistant. How can I help you with seQRets today?"
                     showLinkToFullPage={true}

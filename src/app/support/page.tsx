@@ -44,7 +44,7 @@ export default function SupportPage() {
                     </div>
                 </header>
 
-                <Card className="flex flex-col flex-grow">
+                <Card className="flex flex-col flex-grow dark:bg-[#2b2728]">
                     <CardHeader className="p-10">
                         <div className="flex items-center gap-4">
                             <Bot className="h-8 w-8" />
