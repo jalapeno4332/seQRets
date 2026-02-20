@@ -16,7 +16,7 @@ To restore your original secret, you must bring a specific number of these Qards
 
 > 🛡️ **Your secrets never leave your device.** All encryption, splitting, and decryption happens entirely in your browser (web) or on your machine (desktop). No servers, no cloud, no accounts, no telemetry. seQRets is [open source](https://github.com/jalapeno4332/seQRets) — audit every line.
 
-> **Version 0.9.9 "Sanctum"** (*Beta*) — Available as a web app (Next.js) and native desktop app (Tauri + Vite).
+> **v1.0.1 🔥 Ignition** — Available as a web app (Next.js) and native desktop app (Tauri + Vite).
 
 ## ⚠️ Warning
 
@@ -294,7 +294,7 @@ npm run desktop:dev
 npm run desktop:build
 ```
 
-Produces `seQRets_0.9.9_aarch64.dmg` in `packages/desktop/src-tauri/target/release/bundle/dmg/`.
+Produces `seQRets_1.0.1_aarch64.dmg` in `packages/desktop/src-tauri/target/release/bundle/dmg/`.
 
 ### 🤖 Optional: Bob AI Assistant
 

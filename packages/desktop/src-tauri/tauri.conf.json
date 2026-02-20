@@ -1,7 +1,7 @@
 {
   "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "seQRets",
-  "version": "0.9.9",
+  "version": "1.0.1",
   "identifier": "com.seqrets.desktop",
   "build": {
     "frontendDist": "../dist",

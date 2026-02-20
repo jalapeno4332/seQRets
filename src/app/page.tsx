@@ -99,7 +99,7 @@ function App() {
 
         <footer className="text-center mt-12 mb-16 text-sm text-muted-foreground">
           <p>&copy; {new Date().getFullYear()} seQRets. All rights reserved.</p>
-          <p className="mt-1">Version 0.9.9 🔐 Sanctum — <em>Beta</em></p>
+          <p className="mt-1">v1.0.1 🔥 Ignition</p>
           <p className="mt-1">All data is processed locally. Your security is your responsibility.</p>
           <p className="mt-1"><ConnectionStatus /></p>
         </footer>
