@@ -27,7 +27,7 @@ v1.0.1 "Ignition" — Available as a web app (Next.js) and native desktop app (T
 - **Import Vault File:** Import a previously exported .seqrets file to restore your Qards into the app.
 - **Flexible Backup Options:** Download your Qards as printable QR code images (PNG), as raw text files (TXT), or both.
 - **Write to JavaCard Smartcard:** Store individual shares, full vaults, or keyfiles on JCOP3 hardware smartcards with optional PIN protection (desktop only).
-- **Secure Memory Wipe:** seQRets automatically overwrites sensitive data in memory with random data immediately after use.
+- **Secure Memory Handling:** seQRets zeros cryptographic byte buffers (derived keys, decrypted data, keyfile bytes) in memory after each operation using `fill(0)` in `finally` blocks. Keyfile data and Shamir share data are cleared from UI state immediately after a successful operation. Note: JavaScript strings such as passwords entered in the UI cannot be cryptographically zeroed — a known limitation of browser-based applications.
 
 ### Inheritance Plan
 - **In-app plan builder** (desktop only) — create your inheritance plan directly inside the app using a structured, 7-section form (plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, personal message). The plan is encrypted as a compact JSON blob (~2-4 KB) that fits on a smart card.

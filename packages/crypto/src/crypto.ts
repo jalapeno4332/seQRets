@@ -72,12 +72,18 @@ async function deriveKey(password: string, salt: Uint8Array, keyfile?: Uint8Arra
     const passwordBytes = textEncoder.encode(password);
     const inputBytes = keyfile ? concatBytes(passwordBytes, keyfile) : passwordBytes;
 
-    return argon2id(inputBytes, salt, {
-        m: ARGON2_MEM_COST,
-        t: ARGON2_TIME_COST,
-        p: ARGON2_PARALLELISM,
-        dkLen: KEY_LENGTH,
-    });
+    try {
+        return await argon2id(inputBytes, salt, {
+            m: ARGON2_MEM_COST,
+            t: ARGON2_TIME_COST,
+            p: ARGON2_PARALLELISM,
+            dkLen: KEY_LENGTH,
+        });
+    } finally {
+        passwordBytes.fill(0);
+        // inputBytes is a new buffer only when keyfile is present (concatBytes); zero it too
+        if (keyfile) inputBytes.fill(0);
+    }
 }
 
 function getSetIdForShare(salt: Uint8Array): string {
@@ -122,31 +128,36 @@ export async function createShares(request: CreateSharesRequest): Promise<Create
     const salt = randomBytes(SALT_LENGTH);
     const passwordDerivedKey = await deriveKey(password, salt, keyfileBytes);
 
-    const nonce = randomBytes(NONCE_LENGTH);
-    const encryptedSecret = xchacha20poly1305(passwordDerivedKey, nonce).encrypt(compressedPayload);
+    try {
+        const nonce = randomBytes(NONCE_LENGTH);
+        const encryptedSecret = xchacha20poly1305(passwordDerivedKey, nonce).encrypt(compressedPayload);
 
-    const combinedEncrypted = new Uint8Array(nonce.length + encryptedSecret.length);
-    combinedEncrypted.set(nonce, 0);
-    combinedEncrypted.set(encryptedSecret, nonce.length);
+        const combinedEncrypted = new Uint8Array(nonce.length + encryptedSecret.length);
+        combinedEncrypted.set(nonce, 0);
+        combinedEncrypted.set(encryptedSecret, nonce.length);
 
-    const encryptedBuffer = Buffer.from(combinedEncrypted);
-    const encryptedShares = split(encryptedBuffer, { shares: totalShares, threshold: requiredShares });
+        const encryptedBuffer = Buffer.from(combinedEncrypted);
+        const encryptedShares = split(encryptedBuffer, { shares: totalShares, threshold: requiredShares });
 
-    const saltBase64 = Buffer.from(salt).toString('base64');
-    const formattedShares = encryptedShares.map(shareData => {
-        const shareDataBase64 = shareData.toString('base64');
-        return `seQRets|${saltBase64}|${shareDataBase64}`;
-    });
+        const saltBase64 = Buffer.from(salt).toString('base64');
+        const formattedShares = encryptedShares.map(shareData => {
+            const shareDataBase64 = shareData.toString('base64');
+            return `seQRets|${saltBase64}|${shareDataBase64}`;
+        });
 
-    const setId = getSetIdForShare(salt);
+        const setId = getSetIdForShare(salt);
 
-    return {
-        shares: formattedShares,
-        totalShares,
-        requiredShares,
-        label,
-        setId,
-    };
+        return {
+            shares: formattedShares,
+            totalShares,
+            requiredShares,
+            label,
+            setId,
+        };
+    } finally {
+        passwordDerivedKey.fill(0);
+        keyfileBytes?.fill(0);
+    }
 }
 
 
@@ -156,8 +167,6 @@ export async function restoreSecret(request: RestoreSecretRequest): Promise<Rest
     if (!shares || shares.length === 0) {
         throw new Error('No shares provided.');
     }
-
-    const keyfileBytes = keyfile ? Buffer.from(keyfile, 'base64') : undefined;
 
     let saltBase64: string | null = null;
     const encryptedShares: Buffer[] = [];
@@ -193,58 +202,70 @@ export async function restoreSecret(request: RestoreSecretRequest): Promise<Rest
     }
 
     const salt = Buffer.from(saltBase64, 'base64');
-    const passwordDerivedKey = await deriveKey(password, salt, keyfileBytes);
 
-    const nonce = combinedEncryptedSecret.slice(0, NONCE_LENGTH);
-    const encryptedData = combinedEncryptedSecret.slice(NONCE_LENGTH);
-
-    let decryptedBytes: Uint8Array;
-    try {
-        decryptedBytes = xchacha20poly1305(passwordDerivedKey, nonce).decrypt(encryptedData);
-    } catch (error) {
-        throw new Error('Authentication failed. Please check your password, keyfile, and QR codes.');
-    }
-
-    const decompressedBytes = ungzip(decryptedBytes);
-
-    const decodedString = textDecoder.decode(decompressedBytes);
+    let passwordDerivedKey: Uint8Array | undefined;
+    let keyfileBytesLocal: Uint8Array | undefined;
+    let decryptedBytes: Uint8Array | undefined;
+    let decompressedBytes: Uint8Array | undefined;
 
     try {
-        const payload = JSON.parse(decodedString);
-        let finalSecret = payload.secret;
+        keyfileBytesLocal = keyfile ? Buffer.from(keyfile, 'base64') : undefined;
+        passwordDerivedKey = await deriveKey(password, salt, keyfileBytesLocal);
 
-        if (payload.isMnemonic && payload.mnemonicLengths && Array.isArray(payload.mnemonicLengths)) {
-            const wordCountToBytes: { [key: number]: number } = {
-                12: 16, 15: 20, 18: 24, 21: 28, 24: 32
-            };
+        const nonce = combinedEncryptedSecret.slice(0, NONCE_LENGTH);
+        const encryptedData = combinedEncryptedSecret.slice(NONCE_LENGTH);
 
-            const combinedEntropy = Buffer.from(payload.secret, 'base64');
-            const phrases: string[] = [];
-            let currentIndex = 0;
-
-            for (const wordCount of payload.mnemonicLengths) {
-                const bytes = wordCountToBytes[wordCount];
-                if (!bytes || currentIndex + bytes > combinedEntropy.length) {
-                    throw new Error("Mnemonic length metadata is corrupted or does not match entropy data.");
-                }
-                const entropyChunk = combinedEntropy.slice(currentIndex, currentIndex + bytes);
-                phrases.push(entropyToMnemonic(entropyChunk, wordlist));
-                currentIndex += bytes;
-            }
-
-            if(currentIndex !== combinedEntropy.length) {
-                 throw new Error("Entropy length does not match sum of mnemonic lengths. The data is likely corrupted.");
-            }
-
-            finalSecret = phrases.join('\n\n'); // Add double newline for better readability
+        try {
+            decryptedBytes = xchacha20poly1305(passwordDerivedKey, nonce).decrypt(encryptedData);
+        } catch (error) {
+            throw new Error('Authentication failed. Please check your password, keyfile, and QR codes.');
         }
 
-        return {
-            secret: finalSecret,
-            label: payload.label || undefined,
-        };
-    } catch (e: any) {
-         throw new Error(`Failed to parse the decrypted payload. The share data may be corrupted. Details: ${e.message}`);
+        decompressedBytes = ungzip(decryptedBytes);
+        const decodedString = textDecoder.decode(decompressedBytes);
+
+        try {
+            const payload = JSON.parse(decodedString);
+            let finalSecret = payload.secret;
+
+            if (payload.isMnemonic && payload.mnemonicLengths && Array.isArray(payload.mnemonicLengths)) {
+                const wordCountToBytes: { [key: number]: number } = {
+                    12: 16, 15: 20, 18: 24, 21: 28, 24: 32
+                };
+
+                const combinedEntropy = Buffer.from(payload.secret, 'base64');
+                const phrases: string[] = [];
+                let currentIndex = 0;
+
+                for (const wordCount of payload.mnemonicLengths) {
+                    const bytes = wordCountToBytes[wordCount];
+                    if (!bytes || currentIndex + bytes > combinedEntropy.length) {
+                        throw new Error("Mnemonic length metadata is corrupted or does not match entropy data.");
+                    }
+                    const entropyChunk = combinedEntropy.slice(currentIndex, currentIndex + bytes);
+                    phrases.push(entropyToMnemonic(entropyChunk, wordlist));
+                    currentIndex += bytes;
+                }
+
+                if (currentIndex !== combinedEntropy.length) {
+                    throw new Error("Entropy length does not match sum of mnemonic lengths. The data is likely corrupted.");
+                }
+
+                finalSecret = phrases.join('\n\n');
+            }
+
+            return {
+                secret: finalSecret,
+                label: payload.label || undefined,
+            };
+        } catch (e: any) {
+            throw new Error(`Failed to parse the decrypted payload. The share data may be corrupted. Details: ${e.message}`);
+        }
+    } finally {
+        passwordDerivedKey?.fill(0);
+        keyfileBytesLocal?.fill(0);
+        decryptedBytes?.fill(0);
+        decompressedBytes?.fill(0);
     }
 }
 
@@ -252,21 +273,26 @@ export async function restoreSecret(request: RestoreSecretRequest): Promise<Rest
 export async function decryptInstructions(request: DecryptInstructionRequest): Promise<DecryptInstructionResult> {
     const { encryptedData, password, keyfile } = request;
 
+    let derivedKey: Uint8Array | undefined;
+    let keyfileBytes: Uint8Array | undefined;
+    let decryptedCompressedBytes: Uint8Array | undefined;
+    let decryptedBytes: Uint8Array | undefined;
+
     try {
         const encryptedPayload = JSON.parse(encryptedData) as EncryptedInstruction;
 
         const salt = Buffer.from(encryptedPayload.salt, 'base64');
-        const keyfileBytes = keyfile ? Buffer.from(keyfile, 'base64') : undefined;
+        keyfileBytes = keyfile ? Buffer.from(keyfile, 'base64') : undefined;
 
-        const derivedKey = await deriveKey(password, salt, keyfileBytes);
+        derivedKey = await deriveKey(password, salt, keyfileBytes);
 
         const combinedBytes = Buffer.from(encryptedPayload.data, 'base64');
         const nonce = combinedBytes.slice(0, NONCE_LENGTH);
         const ciphertext = combinedBytes.slice(NONCE_LENGTH);
 
-        const decryptedCompressedBytes = xchacha20poly1305(derivedKey, nonce).decrypt(ciphertext);
+        decryptedCompressedBytes = xchacha20poly1305(derivedKey, nonce).decrypt(ciphertext);
 
-        const decryptedBytes = ungzip(decryptedCompressedBytes);
+        decryptedBytes = ungzip(decryptedCompressedBytes);
         const decryptedPayloadString = textDecoder.decode(decryptedBytes);
         const finalPayload = JSON.parse(decryptedPayloadString);
 
@@ -278,6 +304,11 @@ export async function decryptInstructions(request: DecryptInstructionRequest): P
             throw new Error('Authentication failed. Please check your password and keyfile.');
         }
         throw new Error('Failed to decrypt instructions. The file may be corrupted or the wrong credentials were used.');
+    } finally {
+        derivedKey?.fill(0);
+        keyfileBytes?.fill(0);
+        decryptedCompressedBytes?.fill(0);
+        decryptedBytes?.fill(0);
     }
 }
 
@@ -286,37 +317,49 @@ export async function encryptVault(jsonString: string, password: string): Promis
     const salt = randomBytes(SALT_LENGTH);
     const derivedKey = await deriveKey(password, salt);
 
-    const jsonBytes = textEncoder.encode(jsonString);
-    const compressed = gzip(jsonBytes, { level: 9 });
+    try {
+        const jsonBytes = textEncoder.encode(jsonString);
+        const compressed = gzip(jsonBytes, { level: 9 });
 
-    const nonce = randomBytes(NONCE_LENGTH);
-    const ciphertext = xchacha20poly1305(derivedKey, nonce).encrypt(compressed);
+        const nonce = randomBytes(NONCE_LENGTH);
+        const ciphertext = xchacha20poly1305(derivedKey, nonce).encrypt(compressed);
 
-    const combined = concatBytes(nonce, ciphertext);
+        const combined = concatBytes(nonce, ciphertext);
 
-    return {
-        salt: Buffer.from(salt).toString('base64'),
-        data: Buffer.from(combined).toString('base64'),
-    };
+        return {
+            salt: Buffer.from(salt).toString('base64'),
+            data: Buffer.from(combined).toString('base64'),
+        };
+    } finally {
+        derivedKey.fill(0);
+    }
 }
 
 export async function decryptVault(salt: string, data: string, password: string): Promise<string> {
     const saltBytes = Buffer.from(salt, 'base64');
     const derivedKey = await deriveKey(password, saltBytes);
 
-    const combinedBytes = Buffer.from(data, 'base64');
-    const nonce = combinedBytes.slice(0, NONCE_LENGTH);
-    const ciphertext = combinedBytes.slice(NONCE_LENGTH);
+    let decryptedCompressed: Uint8Array | undefined;
+    let decompressed: Uint8Array | undefined;
 
-    let decryptedCompressed: Uint8Array;
     try {
-        decryptedCompressed = xchacha20poly1305(derivedKey, nonce).decrypt(ciphertext);
-    } catch (error) {
-        throw new Error('Wrong vault password. Please try again.');
-    }
+        const combinedBytes = Buffer.from(data, 'base64');
+        const nonce = combinedBytes.slice(0, NONCE_LENGTH);
+        const ciphertext = combinedBytes.slice(NONCE_LENGTH);
 
-    const decompressed = ungzip(decryptedCompressed);
-    return textDecoder.decode(decompressed);
+        try {
+            decryptedCompressed = xchacha20poly1305(derivedKey, nonce).decrypt(ciphertext);
+        } catch (error) {
+            throw new Error('Wrong vault password. Please try again.');
+        }
+
+        decompressed = ungzip(decryptedCompressed);
+        return textDecoder.decode(decompressed);
+    } finally {
+        derivedKey.fill(0);
+        decryptedCompressed?.fill(0);
+        decompressed?.fill(0);
+    }
 }
 
 export async function encryptInstructions(instructions: RawInstruction, password: string, keyfile?: string): Promise<EncryptedInstruction> {
@@ -325,17 +368,22 @@ export async function encryptInstructions(instructions: RawInstruction, password
     const keyfileBytes = keyfile ? Buffer.from(keyfile, 'base64') : undefined;
     const passwordDerivedKey = await deriveKey(password, salt, keyfileBytes);
 
-    const instructionsPayload = JSON.stringify(instructions);
-    const instructionsBytes = textEncoder.encode(instructionsPayload);
-    const compressedInstructions = gzip(instructionsBytes, { level: 9 });
+    try {
+        const instructionsPayload = JSON.stringify(instructions);
+        const instructionsBytes = textEncoder.encode(instructionsPayload);
+        const compressedInstructions = gzip(instructionsBytes, { level: 9 });
 
-    const instructionsNonce = randomBytes(NONCE_LENGTH);
-    const encryptedData = xchacha20poly1305(passwordDerivedKey, instructionsNonce).encrypt(compressedInstructions);
+        const instructionsNonce = randomBytes(NONCE_LENGTH);
+        const encryptedData = xchacha20poly1305(passwordDerivedKey, instructionsNonce).encrypt(compressedInstructions);
 
-    const combined = concatBytes(instructionsNonce, encryptedData);
+        const combined = concatBytes(instructionsNonce, encryptedData);
 
-    return {
-        salt: Buffer.from(salt).toString('base64'),
-        data: Buffer.from(combined).toString('base64'),
-    };
+        return {
+            salt: Buffer.from(salt).toString('base64'),
+            data: Buffer.from(combined).toString('base64'),
+        };
+    } finally {
+        passwordDerivedKey.fill(0);
+        keyfileBytes?.fill(0);
+    }
 }

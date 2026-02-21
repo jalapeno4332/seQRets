@@ -70,6 +70,9 @@ export function RestoreSecretForm() {
         if (type === 'restoreSecretSuccess') {
             setRestoredSecret(payload.secret);
             setRestoredLabel(payload.label);
+            setKeyfile(null);
+            setKeyfileName(null);
+            setDecodedShares([]);
             toast({
                 title: 'Secret Restored!',
                 description: 'Your secret has been successfully decrypted.',
@@ -100,6 +103,7 @@ export function RestoreSecretForm() {
             const errorMessage = payload.message || 'Could not decrypt the vault file.';
             toast({ variant: 'destructive', title: 'Wrong Password', description: errorMessage });
             setIsDecryptingVault(false);
+            setVaultImportPassword('');
         }
     };
 

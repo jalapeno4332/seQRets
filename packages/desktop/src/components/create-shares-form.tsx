@@ -94,6 +94,8 @@ export function CreateSharesForm() {
             setGeneratedQrData({ ...payload, isTextOnly });
             secureWipe(setSecret, secret);
             secureWipe(setPassword, password);
+            setKeyfile(null);
+            setKeyfileName(null);
             toast({
                 title: 'Shares Generated Successfully',
                 description: `Your secret has been encrypted and split into ${payload.totalShares} Qards.`,
