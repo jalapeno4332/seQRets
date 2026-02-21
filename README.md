@@ -16,25 +16,11 @@ To restore your original secret, you must bring a specific number of these Qards
 
 > 🛡️ **Your secrets never leave your device.** All encryption, splitting, and decryption happens entirely in your browser (web) or on your machine (desktop). No servers, no cloud, no accounts, no telemetry. seQRets is [open source](https://github.com/jalapeno4332/seQRets) — audit every line.
 
-> **v1.0.1 🔥 Ignition** — Available as a web app (Next.js) and native desktop app (Tauri + Vite).
-
 ## ⚠️ Warning
 
+> 🚧 **Beta Software — No Independent Security Audit.** seQRets v1.0 has not undergone a formal third-party security audit. The cryptographic primitives are industry-standard, but the implementation has not been independently reviewed. **Do not use seQRets as your only backup for high-value secrets.** Always maintain independent backups through other secure means (hardware wallet, paper backup in a fireproof safe, etc.) until a formal audit has been completed.
+
 **Your security is your responsibility.** seQRets gives you full control over your digital assets. Misplacing your password or the required number of Qards can result in the **permanent loss** of your secret. The developers have no access to your data, cannot recover your password, and cannot restore your secrets. Manage your Qards and password with extreme care.
-
-## 🤔 Why Not Just Encrypt a USB Drive?
-
-Encrypting a USB drive is better than nothing — but it has critical weaknesses that seQRets solves:
-
-| | Encrypted USB Drive | seQRets (Shamir's Secret Sharing) |
-|---|---|---|
-| **Single point of failure** | Drive lost, damaged, or stolen = everything gone | Split across multiple Qards — survive the loss of any piece |
-| **One password = full access** | Anyone with the password gets everything | Need the threshold of Qards AND the password — layered defense |
-| **Inheritance** | Must trust one person with the drive + password | Distribute Qards to multiple people/locations — no single person has full access |
-| **Disaster resilience** | One fire, flood, or theft can destroy the only copy | Qards distributed across locations survive localized disasters |
-| **Stolen share** | N/A — it's all-or-nothing | A single Qard is indistinguishable from random noise without the other Qards + password |
-
-**The core insight:** seQRets doesn't just encrypt your secret — it *eliminates single points of failure* by splitting the encrypted data so that no single person, location, or device holds enough to compromise it.
 
 ## 📦 Get seQRets
 
@@ -121,23 +107,35 @@ Purchase an official release and receive:
 ### 🧬 BIP-39 Optimization
 Seed phrases are automatically detected and converted to compact binary entropy before encryption. A 24-word phrase (~150 characters) becomes just 32 bytes, dramatically reducing QR code size.
 
-## 💡 How It Works
+## ⚙️ How seQRets Works
 
-### 📜 Encrypting an Inheritance Plan
+All operations run **entirely on your device** — nothing is ever sent to a server.
 
-**Option A — Upload a File (Encrypt Plan tab)**
-1. **Upload** a document with instructions for your heirs (PDF, DOCX, ODT, TXT — up to 5MB)
-2. **Set** a strong password (use the same password as your Qards, or generate a new one)
-3. **Encrypt** — the file is encrypted with XChaCha20-Poly1305
-4. **Save** — choose **Save to File** and/or **Write to Smart Card** (desktop only, for files under 8 KB)
+### 🔒 Securing a Secret
 
-**Option B — Build In-App (Create Plan tab, desktop only)**
-1. **Fill out** the structured 7-section form: plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, and a personal message
-2. **Set** a strong password and optional keyfile
-3. **Encrypt** — the plan is serialized as compact JSON (~2-4 KB) and encrypted
-4. **Save** — saved with a dynamic filename based on the preparer's last name (e.g., `Smith-Inheritance-Plan.json`) and/or written to a smart card
+1. **Detect** — if your secret is a BIP-39 seed phrase, it is converted to compact binary entropy (e.g., 24 words → 32 bytes) before processing
+2. **Compress** — gzip (level 9) reduces the payload size to minimize QR code density
+3. **Derive key** — your password + optional keyfile are run through Argon2id (64MB memory, 3 iterations) to produce a 256-bit encryption key
+4. **Encrypt** — XChaCha20-Poly1305 encrypts the compressed data using a randomly generated 128-bit salt and 192-bit nonce
+5. **Split** — Shamir's Secret Sharing divides the ciphertext into N shares with a threshold of T (e.g., 2-of-3)
+6. **Output** — each share is encoded as a QR code (Qard); a Qard is computationally indistinguishable from random noise without the others
 
-To decrypt, go to the **Decrypt Plan** tab, upload the encrypted `.json` file or **load from a smart card** (desktop only), and provide the same password (and keyfile if used). In-app plans are automatically detected and displayed in a structured read-only viewer.
+```
+Secret → [BIP-39 optimize] → Compress → Argon2id → Encrypt → Shamir Split → Qards
+```
+
+### 🔓 Restoring a Secret
+
+1. **Gather** — scan or import at least T Qards (the threshold)
+2. **Reconstruct** — Shamir's algorithm recombines the shares into the full ciphertext
+3. **Derive key** — the same password + keyfile are run through Argon2id again, producing the identical key
+4. **Decrypt** — XChaCha20-Poly1305 decrypts and authenticates the data; any tampering causes an immediate authentication failure
+5. **Decompress** — gunzip restores the original bytes
+6. **Output** — your original secret, exactly as entered
+
+```
+T Qards → Shamir Reconstruct → Argon2id → Decrypt + Verify → Decompress → Secret
+```
 
 ## 🏛️ Inheritance Planning Guide
 
