@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Download, Printer, Sparkles, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck, CreditCard } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import JSZip from 'jszip';
 import { useToast } from '@/hooks/use-toast';
 import { CreateSharesResult, QrCodeData, EncryptedVaultFile } from '@/lib/types';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SmartCardDialog, SmartCardMode } from '@/components/smartcard-dialog';
 import { saveFileNative, saveTextFileNative, dataUrlToUint8Array, PNG_FILTERS, TXT_FILTERS, ZIP_FILTERS, SEQRETS_FILTERS } from '@/lib/native-save';
+import { encryptVault } from '@/lib/desktop-crypto';
 
 interface QrCodeDisplayProps {
   qrCodeData: CreateSharesResult;
@@ -37,33 +38,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
   const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState('');
   const [isVaultPasswordVisible, setIsVaultPasswordVisible] = useState(false);
   const [isEncryptingVault, setIsEncryptingVault] = useState(false);
-  const vaultWorkerRef = useRef<Worker>();
-
-  useEffect(() => {
-    vaultWorkerRef.current = new Worker(new URL('@/lib/crypto.worker.ts', import.meta.url), { type: 'module' });
-    vaultWorkerRef.current.onmessage = (event: MessageEvent<{ type: string; payload: any }>) => {
-      const handleMessage = async () => {
-        const { type, payload } = event.data;
-        if (type === 'encryptVaultSuccess') {
-          const encryptedFile: EncryptedVaultFile = {
-            version: 2,
-            encrypted: true,
-            salt: payload.salt,
-            data: payload.data,
-          };
-          await downloadVaultFile(JSON.stringify(encryptedFile, null, 2), true);
-          setIsEncryptingVault(false);
-          setIsVaultDialogOpen(false);
-          resetVaultDialog();
-        } else if (type === 'encryptVaultError') {
-          toast({ variant: 'destructive', title: 'Encryption Failed', description: payload.message || 'Could not encrypt the vault file.' });
-          setIsEncryptingVault(false);
-        }
-      };
-      handleMessage();
-    };
-    return () => vaultWorkerRef.current?.terminate();
-  }, []);
+  // No Worker setup needed — vault encryption runs natively in Rust via Tauri IPC.
 
   const getShareTitle = (index: number) => {
     const sanitizedLabel = label ? `-${label.replace(/[^a-zA-Z0-9_-]/g, '')}` : '';
@@ -396,7 +371,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     resetVaultDialog();
   };
 
-  const handleExportWithPassword = () => {
+  const handleExportWithPassword = async () => {
     if (!vaultPassword) {
       toast({ variant: 'destructive', title: 'Password Required', description: 'Please enter a password or choose to export without one.' });
       return;
@@ -410,10 +385,22 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
       return;
     }
     setIsEncryptingVault(true);
-    vaultWorkerRef.current?.postMessage({
-      type: 'encryptVault',
-      payload: { jsonString: getVaultJsonString(), password: vaultPassword },
-    });
+    try {
+      const result = await encryptVault(getVaultJsonString(), vaultPassword);
+      const encryptedFile: EncryptedVaultFile = {
+        version: 2,
+        encrypted: true,
+        salt: result.salt,
+        data: result.data,
+      };
+      await downloadVaultFile(JSON.stringify(encryptedFile, null, 2), true);
+      setIsVaultDialogOpen(false);
+      resetVaultDialog();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Encryption Failed', description: e?.message || 'Could not encrypt the vault file.' });
+    } finally {
+      setIsEncryptingVault(false);
+    }
   };
 
   useEffect(() => {

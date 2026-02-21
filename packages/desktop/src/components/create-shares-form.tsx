@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
-import { CreateSharesRequest, CreateSharesResult } from '@/lib/types';
+import { CreateSharesResult } from '@/lib/types';
+import { createShares } from '@/lib/desktop-crypto';
 import { SeedPhraseGenerator } from './seed-phrase-generator';
 import { gzip } from 'pako';
 import { tryGetEntropy } from '@/lib/crypto';
@@ -52,7 +53,6 @@ export function CreateSharesForm() {
 
   // New state for progressive reveal
   const [step, setStep] = useState(1);
-  const cryptoWorkerRef = useRef<Worker>();
 
   const isTextOnly = estimatedShareSize > QR_CAPACITY_LIMIT;
 
@@ -85,46 +85,7 @@ export function CreateSharesForm() {
     toast({ title: 'Keyfile Loaded', description: 'Keyfile loaded from smart card.' });
   };
 
-  useEffect(() => {
-    cryptoWorkerRef.current = new Worker(new URL('@/lib/crypto.worker.ts', import.meta.url), { type: 'module' });
-
-    cryptoWorkerRef.current.onmessage = (event: MessageEvent<{ type: string, payload: any }>) => {
-        const { type, payload } = event.data;
-        if (type === 'createSharesSuccess') {
-            setGeneratedQrData({ ...payload, isTextOnly });
-            secureWipe(setSecret, secret);
-            secureWipe(setPassword, password);
-            setKeyfile(null);
-            setKeyfileName(null);
-            toast({
-                title: 'Shares Generated Successfully',
-                description: `Your secret has been encrypted and split into ${payload.totalShares} Qards.`,
-            });
-        } else if (type === 'createSharesError') {
-            const errorMessage = payload.message || 'An unknown error occurred during share generation.';
-            toast({
-                variant: 'destructive',
-                title: 'Encryption Failed',
-                description: errorMessage,
-            });
-            setGeneratedQrData(null);
-        }
-        setIsGenerating(false);
-    };
-
-    cryptoWorkerRef.current.onerror = (e) => {
-        toast({
-            variant: 'destructive',
-            title: 'Worker Error',
-            description: 'An unexpected error occurred in the cryptography worker.',
-        });
-        setIsGenerating(false);
-    };
-
-    return () => {
-        cryptoWorkerRef.current?.terminate();
-    };
-  }, []); // Empty dependency array ensures this runs only once
+  // No Worker setup needed — crypto runs natively in Rust via Tauri IPC.
 
 
   useEffect(() => {
@@ -164,7 +125,7 @@ export function CreateSharesForm() {
 }, [secret]);
 
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!secret || !password) {
       toast({
         variant: 'destructive',
@@ -198,24 +159,41 @@ export function CreateSharesForm() {
       return;
     }
 
+    // Capture current values before the async operation.
+    const secretSnapshot = secret;
+    const passwordSnapshot = password;
     setIsGenerating(true);
-    const worker = cryptoWorkerRef.current;
-    if (!worker) {
-        setIsGenerating(false);
-        return;
-    };
 
-    worker.postMessage({
-        type: 'createShares',
-        payload: {
+    try {
+        const result = await createShares({
             secret,
             password,
             totalShares,
             requiredShares,
             label,
             keyfile: useKeyfile ? (keyfile ?? undefined) : undefined,
-        } satisfies CreateSharesRequest,
-    });
+        });
+
+        setGeneratedQrData({ ...result, isTextOnly });
+        secureWipe(setSecret, secretSnapshot);
+        secureWipe(setPassword, passwordSnapshot);
+        setKeyfile(null);
+        setKeyfileName(null);
+        toast({
+            title: 'Shares Generated Successfully',
+            description: `Your secret has been encrypted and split into ${result.totalShares} Qards.`,
+        });
+    } catch (e: any) {
+        const errorMessage = e?.message || 'An unknown error occurred during share generation.';
+        toast({
+            variant: 'destructive',
+            title: 'Encryption Failed',
+            description: errorMessage,
+        });
+        setGeneratedQrData(null);
+    } finally {
+        setIsGenerating(false);
+    }
   };
 
   const handleReset = () => {

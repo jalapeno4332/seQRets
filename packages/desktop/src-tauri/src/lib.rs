@@ -1,3 +1,4 @@
+mod crypto;
 mod smartcard;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,6 +20,7 @@ pub fn run() {
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
+      // Smartcard commands
       smartcard::list_readers,
       smartcard::get_card_status,
       smartcard::write_item_to_card,
@@ -30,6 +32,11 @@ pub fn run() {
       smartcard::verify_pin,
       smartcard::set_pin,
       smartcard::change_pin,
+      // Native crypto commands (Argon2id + XChaCha20-Poly1305)
+      crypto::crypto_create,
+      crypto::crypto_restore,
+      crypto::crypto_encrypt_blob,
+      crypto::crypto_decrypt_blob,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

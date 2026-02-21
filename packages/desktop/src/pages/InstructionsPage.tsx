@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useTransition, DragEvent } from 'react';
+import React, { useState, DragEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ import type { RawInstruction, DecryptInstructionRequest, EncryptedInstruction } 
 import { SmartCardDialog } from '@/components/smartcard-dialog';
 import type { CardItem } from '@/lib/smartcard';
 import { saveFileNative, saveTextFileNative, base64ToUint8Array } from '@/lib/native-save';
+import { encryptInstructions, decryptInstructions } from '@/lib/desktop-crypto';
 import { InheritancePlanForm } from '@/components/inheritance-plan-form';
 import { InheritancePlanViewer } from '@/components/inheritance-plan-viewer';
 import { createBlankPlan } from '@/lib/inheritance-plan-types';
@@ -61,7 +62,7 @@ export default function InstructionsPage() {
   const [encryptKeyfile, setEncryptKeyfile] = useState<string | null>(null);
   const [encryptKeyfileName, setEncryptKeyfileName] = useState<string | null>(null);
   const [isEncryptPasswordValid, setIsEncryptPasswordValid] = useState(false);
-  const [isEncrypting, startEncryptTransition] = useTransition();
+  const [isEncrypting, setIsEncrypting] = useState(false);
   const [encryptedResult, setEncryptedResult] = useState<EncryptedInstruction | null>(null);
   const [showSmartCardDialog, setShowSmartCardDialog] = useState(false);
   const [showEncryptKeyfileSmartCard, setShowEncryptKeyfileSmartCard] = useState(false);
@@ -80,67 +81,14 @@ export default function InstructionsPage() {
   const [decryptKeyfile, setDecryptKeyfile] = useState<string | null>(null);
   const [decryptKeyfileName, setDecryptKeyfileName] = useState<string | null>(null);
   const [showDecryptKeyfileSmartCard, setShowDecryptKeyfileSmartCard] = useState(false);
-  const [isDecrypting, startDecryptTransition] = useTransition();
+  const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptedPlan, setDecryptedPlan] = useState<InheritancePlan | null>(null);
   const [showPlanViewer, setShowPlanViewer] = useState(false);
 
-  const cryptoWorkerRef = useRef<Worker>();
-
-  useEffect(() => {
-    cryptoWorkerRef.current = new Worker(new URL('@/lib/crypto.worker.ts', import.meta.url), { type: 'module' });
-
-    cryptoWorkerRef.current.onmessage = (event: MessageEvent<{ type: string; payload: any }>) => {
-      const { type, payload } = event.data;
-
-      if (type === 'encryptInstructionsSuccess') {
-        setEncryptedResult(payload as EncryptedInstruction);
-        setEncryptStep(4);
-        toast({ title: 'Instructions Encrypted!', description: 'Choose how to save your encrypted instructions below.' });
-        startEncryptTransition(() => {});
-      } else if (type === 'encryptInstructionsError') {
-        toast({ variant: 'destructive', title: 'Encryption Failed', description: payload.message || 'Could not encrypt the instructions file.' });
-        startEncryptTransition(() => {});
-      } else if (type === 'decryptInstructionsSuccess') {
-        const rawInstruction = payload as RawInstruction;
-
-        // Check if this is an in-app inheritance plan
-        if (isInheritancePlan(rawInstruction)) {
-          const plan = rawInstructionToPlan(rawInstruction);
-          if (plan) {
-            setDecryptedPlan(plan);
-            setShowPlanViewer(true);
-            toast({ title: 'Plan Decrypted!', description: 'Your inheritance plan has been decrypted and is ready to view.' });
-            startDecryptTransition(() => {});
-            return;
-          }
-        }
-
-        // Fallback: existing file save behavior for uploaded files
-        const handleSave = async () => {
-          const { fileContent, fileName } = rawInstruction;
-          const byteArray = base64ToUint8Array(fileContent);
-          const ext = fileName.split('.').pop() || '*';
-          const filters = [{ name: `${ext.toUpperCase()} Files`, extensions: [ext] }];
-          const savedPath = await saveFileNative(fileName, filters, byteArray);
-          if (savedPath) {
-            toast({ title: 'Instructions Decrypted!', description: `Saved "${fileName}" successfully.` });
-          }
-          startDecryptTransition(() => {});
-        };
-        handleSave();
-      } else if (type === 'decryptInstructionsError') {
-        toast({ variant: 'destructive', title: 'Decryption Failed', description: payload.message || 'Could not decrypt the instructions file.' });
-        startDecryptTransition(() => {});
-      }
-    };
-
-    return () => {
-      cryptoWorkerRef.current?.terminate();
-    };
-  }, []);
+  // No Worker setup needed — crypto runs natively in Rust via Tauri IPC.
 
   // ── Encrypt handlers ──
-  const handleEncrypt = async () => {
+  const handleEncrypt = async (): Promise<void> => {
     if (!encryptPassword || !isEncryptPasswordValid) return;
     if (encryptUseKeyfile && !encryptKeyfile) {
       toast({ variant: 'destructive', title: 'Missing Keyfile', description: 'Please select a keyfile or disable the keyfile option.' });
@@ -167,16 +115,21 @@ export default function InstructionsPage() {
       instruction = planToRawInstruction(finalPlan);
     }
 
-    startEncryptTransition(() => {
-      cryptoWorkerRef.current?.postMessage({
-        type: 'encryptInstructions',
-        payload: {
-          instructions: instruction,
-          password: encryptPassword,
-          keyfile: encryptUseKeyfile ? encryptKeyfile : undefined,
-        },
-      });
-    });
+    setIsEncrypting(true);
+    try {
+      const result = await encryptInstructions(
+        instruction,
+        encryptPassword,
+        encryptUseKeyfile ? encryptKeyfile ?? undefined : undefined
+      );
+      setEncryptedResult(result);
+      setEncryptStep(4);
+      toast({ title: 'Instructions Encrypted!', description: 'Choose how to save your encrypted instructions below.' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Encryption Failed', description: e?.message || 'Could not encrypt the instructions file.' });
+    } finally {
+      setIsEncrypting(false);
+    }
   };
 
   // Build a filename from the plan's "Prepared by" field (or fallback to generic)
@@ -279,26 +232,47 @@ export default function InstructionsPage() {
     toast({ title: 'Keyfile Loaded', description: 'Keyfile loaded from smart card.' });
   };
 
-  const handleDecrypt = () => {
+  const handleDecrypt = async () => {
     if (!decryptFile || !decryptPassword) return;
     if (decryptUseKeyfile && !decryptKeyfile) {
       toast({ variant: 'destructive', title: 'Missing Keyfile', description: 'Please select a keyfile or disable the keyfile option.' });
       return;
     }
 
-    startDecryptTransition(() => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const encryptedData = e.target?.result as string;
-        const request: DecryptInstructionRequest = {
-          encryptedData,
-          password: decryptPassword,
-          keyfile: decryptUseKeyfile ? decryptKeyfile ?? undefined : undefined,
-        };
-        cryptoWorkerRef.current?.postMessage({ type: 'decryptInstructions', payload: request });
-      };
-      reader.readAsText(decryptFile);
-    });
+    setIsDecrypting(true);
+    try {
+      const encryptedData = await decryptFile.text();
+      const rawInstruction = await decryptInstructions({
+        encryptedData,
+        password: decryptPassword,
+        keyfile: decryptUseKeyfile ? decryptKeyfile ?? undefined : undefined,
+      });
+
+      // Check if this is an in-app inheritance plan
+      if (isInheritancePlan(rawInstruction)) {
+        const plan = rawInstructionToPlan(rawInstruction);
+        if (plan) {
+          setDecryptedPlan(plan);
+          setShowPlanViewer(true);
+          toast({ title: 'Plan Decrypted!', description: 'Your inheritance plan has been decrypted and is ready to view.' });
+          return;
+        }
+      }
+
+      // Fallback: save the decrypted file to disk
+      const { fileContent, fileName } = rawInstruction;
+      const byteArray = base64ToUint8Array(fileContent);
+      const ext = fileName.split('.').pop() || '*';
+      const filters = [{ name: `${ext.toUpperCase()} Files`, extensions: [ext] }];
+      const savedPath = await saveFileNative(fileName, filters, byteArray);
+      if (savedPath) {
+        toast({ title: 'Instructions Decrypted!', description: `Saved "${fileName}" successfully.` });
+      }
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Decryption Failed', description: e?.message || 'Could not decrypt the instructions file.' });
+    } finally {
+      setIsDecrypting(false);
+    }
   };
 
   const handleDecryptReset = () => {

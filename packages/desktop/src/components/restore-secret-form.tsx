@@ -1,4 +1,4 @@
-import { useState, useTransition, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,8 @@ import { FileUpload } from './file-upload';
 import { KeyRound, Combine, Loader2, CheckCircle2, Eye, EyeOff, XCircle, Copy, RefreshCcw, X, Paperclip, HelpCircle, Lock, ArrowDown } from 'lucide-react';
 import jsQR from 'jsqr';
 import { useToast } from '@/hooks/use-toast';
-import { RestoreSecretRequest, EncryptedVaultFile } from '@/lib/types';
+import { EncryptedVaultFile } from '@/lib/types';
+import { restoreSecret, decryptVault } from '@/lib/desktop-crypto';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -34,7 +35,7 @@ export function RestoreSecretForm() {
   const [password, setPassword] = useState('');
   const [restoredSecret, setRestoredSecret] = useState('');
   const [restoredLabel, setRestoredLabel] = useState<string | undefined>('');
-  const [isRestoring, startRestoreTransition] = useTransition();
+  const [isRestoring, setIsRestoring] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -60,57 +61,7 @@ export function RestoreSecretForm() {
   const [pendingEncryptedVault, setPendingEncryptedVault] = useState<EncryptedVaultFile | null>(null);
   const [pendingVaultFileName, setPendingVaultFileName] = useState<string>('');
 
-  const cryptoWorkerRef = useRef<Worker>();
-
-  useEffect(() => {
-    cryptoWorkerRef.current = new Worker(new URL('@/lib/crypto.worker.ts', import.meta.url), { type: 'module' });
-
-    cryptoWorkerRef.current.onmessage = (event: MessageEvent<{type: string, payload: any}>) => {
-        const { type, payload } = event.data;
-        if (type === 'restoreSecretSuccess') {
-            setRestoredSecret(payload.secret);
-            setRestoredLabel(payload.label);
-            setKeyfile(null);
-            setKeyfileName(null);
-            setDecodedShares([]);
-            toast({
-                title: 'Secret Restored!',
-                description: 'Your secret has been successfully decrypted.',
-            });
-            startRestoreTransition(() => {}); // To ensure isRestoring is set to false
-        } else if (type === 'restoreSecretError') {
-            const errorMessage = payload.message || 'An unknown error occurred during restoration.';
-            setError(errorMessage);
-            toast({
-                variant: 'destructive',
-                title: 'Restoration Failed',
-                description: errorMessage,
-            });
-             startRestoreTransition(() => {});
-        } else if (type === 'decryptVaultSuccess') {
-            try {
-              const vaultData = JSON.parse(payload);
-              processDecryptedVault(vaultData, pendingVaultFileName);
-            } catch {
-              toast({ variant: 'destructive', title: 'Import Failed', description: 'Decrypted data is not a valid vault file.' });
-            }
-            setIsDecryptingVault(false);
-            setIsVaultPasswordDialogOpen(false);
-            setPendingEncryptedVault(null);
-            setVaultImportPassword('');
-            setIsVaultPasswordVisible(false);
-        } else if (type === 'decryptVaultError') {
-            const errorMessage = payload.message || 'Could not decrypt the vault file.';
-            toast({ variant: 'destructive', title: 'Wrong Password', description: errorMessage });
-            setIsDecryptingVault(false);
-            setVaultImportPassword('');
-        }
-    };
-
-    return () => {
-        cryptoWorkerRef.current?.terminate();
-    };
-  }, []);
+  // No Worker setup needed — crypto runs natively in Rust via Tauri IPC.
 
   const secureWipe = (valueSetter: React.Dispatch<React.SetStateAction<string>>, currentValue: string) => {
     if (!currentValue) return;
@@ -400,23 +351,32 @@ export function RestoreSecretForm() {
     toast({ title: 'Keyfile Loaded', description: 'Keyfile loaded from smart card.' });
   };
 
-  const handleDecryptVaultImport = () => {
+  const handleDecryptVaultImport = async () => {
     if (!pendingEncryptedVault || !vaultImportPassword) {
       toast({ variant: 'destructive', title: 'Password Required', description: 'Please enter the vault password.' });
       return;
     }
+    const vaultRef = pendingEncryptedVault;
+    const fileNameRef = pendingVaultFileName;
     setIsDecryptingVault(true);
-    cryptoWorkerRef.current?.postMessage({
-      type: 'decryptVault',
-      payload: {
-        salt: pendingEncryptedVault.salt,
-        data: pendingEncryptedVault.data,
-        password: vaultImportPassword,
-      },
-    });
+    try {
+      const jsonResult = await decryptVault(vaultRef.salt, vaultRef.data, vaultImportPassword);
+      const vaultData = JSON.parse(jsonResult);
+      processDecryptedVault(vaultData, fileNameRef);
+      setIsVaultPasswordDialogOpen(false);
+      setPendingEncryptedVault(null);
+      setVaultImportPassword('');
+      setIsVaultPasswordVisible(false);
+    } catch (e: any) {
+      const errorMessage = e?.message || 'Could not decrypt the vault file.';
+      toast({ variant: 'destructive', title: 'Wrong Password', description: errorMessage });
+      setVaultImportPassword('');
+    } finally {
+      setIsDecryptingVault(false);
+    }
   };
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     if (decodedShares.length === 0 || !password) {
       toast({
         variant: 'destructive',
@@ -437,15 +397,34 @@ export function RestoreSecretForm() {
     setError(null);
     setRestoredSecret('');
     setRestoredLabel('');
+    setIsRestoring(true);
 
-    startRestoreTransition(() => {
-        const request: RestoreSecretRequest = {
-            shares: decodedShares.filter(s => s.success).map(s => s.data),
-            password,
-            keyfile: useKeyfile ? keyfile ?? undefined : undefined,
-        };
-        cryptoWorkerRef.current?.postMessage({ type: 'restoreSecret', payload: request });
-    });
+    try {
+      const result = await restoreSecret({
+        shares: decodedShares.filter(s => s.success).map(s => s.data),
+        password,
+        keyfile: useKeyfile ? keyfile ?? undefined : undefined,
+      });
+      setRestoredSecret(result.secret);
+      setRestoredLabel(result.label);
+      setKeyfile(null);
+      setKeyfileName(null);
+      setDecodedShares([]);
+      toast({
+        title: 'Secret Restored!',
+        description: 'Your secret has been successfully decrypted.',
+      });
+    } catch (e: any) {
+      const errorMessage = e?.message || 'An unknown error occurred during restoration.';
+      setError(errorMessage);
+      toast({
+        variant: 'destructive',
+        title: 'Restoration Failed',
+        description: errorMessage,
+      });
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   const handleReset = () => {

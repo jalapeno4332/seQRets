@@ -26,3 +26,10 @@ tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 pcsc = "2"
+# Cryptography
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+zeroize = { version = "1", features = ["derive"] }
+flate2 = "1"
+rand = "0.8"
+base64 = "0.22"

@@ -362,6 +362,62 @@ export async function decryptVault(salt: string, data: string, password: string)
     }
 }
 
+// ── Desktop-native helpers ────────────────────────────────────────────────────
+// These are called by desktop-crypto.ts, which performs the Argon2id + XChaCha20
+// in Rust and only delegates the payload construction / parsing to these helpers.
+
+/**
+ * Builds the JSON payload string that will be compressed and encrypted by Rust.
+ * Detects BIP-39 mnemonic phrases and stores them as compact entropy for efficiency.
+ */
+export function buildSharePayload(secret: string, label?: string): string {
+    const entropyResult = tryGetEntropy(secret);
+    let payloadObject;
+    if (entropyResult) {
+        const entropyBase64 = entropyResult.entropy.toString('base64');
+        const mnemonicLengths = entropyResult.chunks.map(c => c.split(' ').length);
+        payloadObject = { secret: entropyBase64, label: label || '', isMnemonic: true, mnemonicLengths };
+    } else {
+        payloadObject = { secret: secret.trim(), label: label || '', isMnemonic: false };
+    }
+    return JSON.stringify(payloadObject);
+}
+
+/**
+ * Parses the JSON payload returned by Rust after decryption, converting entropy
+ * back to BIP-39 mnemonic phrases when applicable.
+ */
+export function parseSharePayload(jsonStr: string): { secret: string; label?: string } {
+    const payload = JSON.parse(jsonStr);
+    let finalSecret = payload.secret;
+
+    if (payload.isMnemonic && payload.mnemonicLengths && Array.isArray(payload.mnemonicLengths)) {
+        const wordCountToBytes: { [key: number]: number } = {
+            12: 16, 15: 20, 18: 24, 21: 28, 24: 32,
+        };
+        const combinedEntropy = Buffer.from(payload.secret, 'base64');
+        const phrases: string[] = [];
+        let currentIndex = 0;
+
+        for (const wordCount of payload.mnemonicLengths) {
+            const bytes = wordCountToBytes[wordCount];
+            if (!bytes || currentIndex + bytes > combinedEntropy.length) {
+                throw new Error('Mnemonic length metadata is corrupted or does not match entropy data.');
+            }
+            const entropyChunk = combinedEntropy.slice(currentIndex, currentIndex + bytes);
+            phrases.push(entropyToMnemonic(entropyChunk, wordlist));
+            currentIndex += bytes;
+        }
+
+        if (currentIndex !== combinedEntropy.length) {
+            throw new Error('Entropy length does not match sum of mnemonic lengths. The data is likely corrupted.');
+        }
+        finalSecret = phrases.join('\n\n');
+    }
+
+    return { secret: finalSecret, label: payload.label || undefined };
+}
+
 export async function encryptInstructions(instructions: RawInstruction, password: string, keyfile?: string): Promise<EncryptedInstruction> {
     const salt = randomBytes(SALT_LENGTH);
 
