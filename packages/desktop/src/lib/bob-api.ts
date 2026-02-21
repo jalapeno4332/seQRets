@@ -23,7 +23,7 @@ v1.0.1 "Ignition" — Available as a web app (Next.js) and native desktop app (T
 - **Import Vault File:** Import a previously exported .seqrets file to restore your Qards into the app.
 - **Flexible Backup Options:** Download your Qards as printable QR code images (PNG), as raw text files (TXT), or both.
 - **Write to JavaCard Smartcard:** Store individual shares, full vaults, or keyfiles on JCOP3 hardware smartcards with optional PIN protection (desktop only).
-- **Secure Memory Handling:** **Desktop:** Rust `zeroize` crate — compiler-fence guaranteed key zeroization, optimizer-proof. Keys never cross the JS/Rust boundary. **Web:** Zeroes cryptographic byte buffers (derived keys, decrypted data, keyfile bytes) in `finally` blocks using `fill(0)`. Keyfile data and Shamir share data are cleared from UI state immediately after a successful operation. Note: JS strings (passwords) cannot be cryptographically zeroed — a known limitation of browser-based applications.
+- **Secure Memory Handling:** **Desktop:** Rust zeroize crate — compiler-fence guaranteed key zeroization, optimizer-proof. Keys never cross the JS/Rust boundary. **Web:** Zeroes cryptographic byte buffers (derived keys, decrypted data, keyfile bytes) in finally blocks using fill(0). Keyfile data and Shamir share data are cleared from UI state immediately after a successful operation. Note: JS strings (passwords) cannot be cryptographically zeroed — a known limitation of browser-based applications.
 
 ### Inheritance Plan
 - **In-app plan builder** (desktop only) — create your inheritance plan directly inside the app using a structured, 7-section form (plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, personal message). The plan is encrypted as a compact JSON blob (~2-4 KB) that fits on a smart card.
@@ -130,13 +130,13 @@ const cryptoDetails = `
 
 *   **Random Number Generation (CSPRNG):**
     *   All randomness is sourced from a Cryptographically Secure Pseudo-Random Number Generator (CSPRNG) backed by the OS entropy pool.
-    *   **Desktop:** Rust `rand::thread_rng()` (OS entropy) generates encryption salts and nonces. All other operations (passwords, keyfiles, BIP-39 entropy) use `window.crypto.getRandomValues()`.
-    *   **Web:** `@noble/hashes randomBytes()` wraps `crypto.getRandomValues()` and is used for salts, nonces, and BIP-39 entropy.
-    *   Password generation: `window.crypto.getRandomValues(new Uint32Array(32))` mapped to an 88-character charset.
-    *   Keyfile generation: `window.crypto.getRandomValues(new Uint8Array(32))` — 256 bits of raw random data.
+    *   **Desktop:** Rust rand::thread_rng() (OS entropy) generates encryption salts and nonces. All other operations (passwords, keyfiles, BIP-39 entropy) use window.crypto.getRandomValues().
+    *   **Web:** @noble/hashes randomBytes() wraps crypto.getRandomValues() and is used for salts, nonces, and BIP-39 entropy.
+    *   Password generation: window.crypto.getRandomValues(new Uint32Array(32)) mapped to an 88-character charset.
+    *   Keyfile generation: window.crypto.getRandomValues(new Uint8Array(32)) — 256 bits of raw random data.
     *   Seed phrase entropy: 128 bits (12 words) or 256 bits (24 words) via @scure/bip39's generateMnemonic().
     *   Encryption salt: 16 random bytes per operation. Encryption nonce: 24 random bytes per operation.
-    *   No `Math.random()` or any weak PRNG is used for any security-critical operation.
+    *   No Math.random() or any weak PRNG is used for any security-critical operation.
 
 *   **Seed Phrase Generator & Validation:**
     *   **Library:** @scure/bip39
