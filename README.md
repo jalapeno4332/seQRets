@@ -384,8 +384,11 @@ seQRets/
 ### 📋 Prerequisites
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org/)
-- **Rust** (for desktop app only) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **Xcode Command Line Tools** (macOS, for desktop app only) — `xcode-select --install`
+- **Rust** (desktop app only) — [rustup.rs](https://rustup.rs/)
+- **C++ build tools** (desktop app only, platform-specific):
+  - **macOS** — `xcode-select --install`
+  - **Windows** — [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (free; select "Desktop development with C++" workload). WebView2 is already included in Windows 10/11.
+  - **Linux** — `sudo apt install build-essential libwebkit2gtk-4.1-dev libssl-dev` (Debian/Ubuntu)
 
 ### ⚙️ Setup
 
