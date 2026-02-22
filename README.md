@@ -85,6 +85,8 @@ Purchase an official release and receive:
 - **Manual text entry** — paste raw share data
 - **Import vault file** — load all shares at once from a `.seqrets` file
 - **Read from smartcard** — load shares or vaults directly from a JavaCard (desktop only)
+- **Data QR display** — after restoration, view your secret as a standard QR code for easy transfer
+- **SeedQR display** — for BIP-39 seed phrases, view as a SeedQR (zero-padded 4-digit word indices) compatible with hardware wallets like SeedSigner; supports multi-mnemonic secrets with one SeedQR per phrase
 - Success sound plays on each accepted share
 
 ### 📜 Inheritance Plan
