@@ -27,7 +27,7 @@ v1.0.1 "Ignition" — Available as a web app (Next.js) and native desktop app (T
 - **Import Vault File:** Import a previously exported .seqrets file to restore your Qards into the app.
 - **Flexible Backup Options:** Download your Qards as printable QR code images (PNG), as raw text files (TXT), or both.
 - **Write to JavaCard Smartcard:** Store individual shares, full vaults, or keyfiles on JCOP3 hardware smartcards with optional PIN protection (desktop only).
-- **Secure Memory Handling:** **Desktop:** Rust zeroize crate — compiler-fence guaranteed key zeroization, optimizer-proof. Keys never cross the JS/Rust boundary. **Web:** Zeroes cryptographic byte buffers (derived keys, decrypted data, keyfile bytes) in finally blocks using fill(0). Keyfile data and Shamir share data are cleared from UI state immediately after a successful operation. Note: JS strings (passwords) cannot be cryptographically zeroed — a known limitation of browser-based applications.
+- **Secure Memory Handling:** **Desktop:** Rust zeroize crate — compiler-fence guaranteed key zeroization, optimizer-proof. The derived encryption key stays entirely in Rust and never enters the JS heap. The password string does transit JS briefly via IPC but cannot be zeroed (JS string limitation). **Web:** Zeroes cryptographic byte buffers (derived keys, decrypted data, keyfile bytes) in finally blocks using fill(0). Keyfile data and Shamir share data are cleared from UI state immediately after a successful operation. Note: JS strings (passwords) cannot be cryptographically zeroed — a known limitation of browser-based applications.
 
 ### Inheritance Plan
 - **In-app plan builder** (desktop only) — create your inheritance plan directly inside the app using a structured, 7-section form (plan info, recovery credentials, Qard locations, digital assets, restoration steps, professional contacts, personal message). The plan is encrypted as a compact JSON blob (~2-4 KB) that fits on a smart card.
@@ -300,11 +300,11 @@ NOT mitigated by going offline after load:
 
 Browser extension attack surface: Tauri WebView does not load browser extensions, eliminating this entire threat class.
 
-JS string memory: The password is passed to Rust immediately; the derived encryption key never exists in the JS heap. Only Rust sees the key material.
+JS string memory: The password string still briefly transits the JS heap before being sent to Rust via Tauri IPC — JS strings are immutable and cannot be zeroed. However, the derived encryption key is computed entirely in Rust and never enters the JS heap. This is a significant improvement over the web app, where both the password and the derived key live in the V8 heap.
 
 Key zeroization: The Rust zeroize crate provides compiler-fence guaranteed key erasure — the optimizer cannot elide the wipe. This is stronger than fill(0) in JavaScript.
 
-CDN / supply chain: A code-signed binary with verified integrity at install time eliminates the per-load CDN risk.
+CDN / supply chain: The official signed release is a code-signed binary with integrity verified at install time, eliminating the per-load CDN risk. IMPORTANT: Self-built binaries from source are NOT code-signed. They will trigger OS gatekeeper warnings, do not receive automatic updates, and the user is responsible for verifying their own build integrity. The CDN/supply-chain protections apply only to the official release purchased at https://seqrets.app.
 
 Constant-time operations: The Rust crypto crates (argon2, chacha20poly1305) are constant-time by design.
 
