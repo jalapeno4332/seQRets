@@ -10,7 +10,7 @@ import InstructionsPage from '@/pages/InstructionsPage';
 
 export default function App() {
   return (
-    <ThemeProvider defaultTheme="light">
+    <ThemeProvider defaultTheme="system">
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/about" element={<AboutPage />} />
