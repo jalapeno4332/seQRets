@@ -31,9 +31,9 @@ Use seQRets directly in your browser — no installation required.
 
 ### 🖥️ Desktop App
 
-| | Build It Yourself (Free) | Official Signed Release |
+| | Source Available (Unsupported) | Official Signed Release |
 |---|---|---|
-| **Cost** | Free | TBD |
+| **Cost** | Free (unsupported) | TBD |
 | **Source** | Compile from this repo | Signed pre-built binary |
 | **Platforms** | Any (with Rust + Node.js) | macOS, Windows, Linux |
 | **Auto-updates** | ✗ | ✓ |
@@ -41,16 +41,9 @@ Use seQRets directly in your browser — no installation required.
 | **Smart card** | ✗ | ✓ Included |
 | **Portable card reader** | ✗ | ✓ Included |
 
-#### Build It Yourself
+#### Source Available
 
-Clone this repo and compile the desktop app — it's fully open source under AGPLv3:
-
-```bash
-git clone https://github.com/jalapeno4332/seQRets.git
-cd seQRets/packages/desktop
-npm install
-npm run desktop:build
-```
+The full source is available under AGPLv3 for audit and self-compilation. See [Build & Run from Source](#️-build--run-from-source) below for instructions.
 
 #### Official Signed Release
 
