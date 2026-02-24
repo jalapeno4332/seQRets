@@ -1,9 +1,9 @@
 import { Button } from '@/components/ui/button';
-import { Download, Printer, Sparkles, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck, CreditCard } from 'lucide-react';
+import { Printer, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import JSZip from 'jszip';
 import { useToast } from '@/hooks/use-toast';
-import { CreateSharesResult, QrCodeData, EncryptedVaultFile } from '@/lib/types';
+import { CreateSharesResult, EncryptedVaultFile } from '@/lib/types';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,10 @@ import { Label } from '@/components/ui/label';
 import { SmartCardDialog, SmartCardMode } from '@/components/smartcard-dialog';
 import { saveFileNative, saveTextFileNative, dataUrlToUint8Array, PNG_FILTERS, TXT_FILTERS, ZIP_FILTERS, SEQRETS_FILTERS } from '@/lib/native-save';
 import { encryptVault } from '@/lib/desktop-crypto';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { openPath } from '@tauri-apps/plugin-opener';
+import { tempDir, join } from '@tauri-apps/api/path';
+
 
 interface QrCodeDisplayProps {
   qrCodeData: CreateSharesResult;
@@ -47,6 +51,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
 
   const getPrintableStyles = (forPrintAll: boolean = false) => `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+    @page { size: A5; margin: 0; }
     body {
         margin: 0;
         padding: 0;
@@ -65,6 +70,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
         justify-content: center;
         align-items: center;
         box-sizing: border-box;
+        overflow: hidden;
     }
   `;
 
@@ -110,45 +116,50 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     `;
   };
 
-  const handlePrint = (index: number) => {
-    const printWindow = window.open('', '', 'height=842,width=595');
-    if (printWindow) {
-        const fullHtml = `
-          <html>
-            <head>
-              <title>${getShareTitle(index)}</title>
-              <style>${getPrintableStyles()}</style>
-            </head>
-            <body>${getPrintableHtmlForShare(index)}</body>
-          </html>`;
-        printWindow.document.write(fullHtml);
-        printWindow.document.close();
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 500);
+  /**
+   * Print Qard content by opening a self-contained HTML file in the system
+   * browser. This keeps the app completely undisturbed — the print dialog
+   * appears in a separate Safari/Chrome window with its own print controls.
+   */
+  const printContent = async (contentHtml: string, styles: string) => {
+    const fullHtml = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>${styles}</style>
+    <script>
+      window.onload = function() {
+        // Small delay so the page renders fully before the dialog appears
+        setTimeout(function() { window.print(); }, 400);
+      };
+    <\/script>
+  </head>
+  <body>${contentHtml}</body>
+</html>`;
+
+    try {
+      const tmp = await tempDir();
+      const fileName = 'seqrets-print.html';
+      const fullPath = await join(tmp, fileName);
+      await writeTextFile(fullPath, fullHtml);
+      await openPath(fullPath);
+    } catch (err: any) {
+      console.error('Print failed:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Print Failed',
+        description: String(err?.message || err),
+      });
     }
   };
 
+  const handlePrint = (index: number) => {
+    printContent(getPrintableHtmlForShare(index), getPrintableStyles());
+  };
+
   const handlePrintAll = () => {
-      const printWindow = window.open('', '', 'height=842,width=595');
-      if (printWindow) {
-        let allSharesHtml = shares.map((_, index) => getPrintableHtmlForShare(index, true)).join('');
-        const fullHtml = `
-          <html>
-            <head>
-              <title>seQRets Qards</title>
-              <style>${getPrintableStyles(true)}</style>
-            </head>
-            <body>${allSharesHtml}</body>
-          </html>`;
-        printWindow.document.write(fullHtml);
-        printWindow.document.close();
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 500);
-      }
+    const allSharesHtml = shares.map((_, index) => getPrintableHtmlForShare(index, true)).join('');
+    printContent(allSharesHtml, getPrintableStyles(true));
   };
 
   /**
