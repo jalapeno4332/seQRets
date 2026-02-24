@@ -41,9 +41,9 @@
   .dark {
     --background: 0 5% 8%;              /* #151314 soft dark */
     --foreground: 37 10% 89%;           /* #e8e5df warm off-white */
-    --card: 340 4% 23%;                 /* #3e3739 dark charcoal */
+    --card: 60 3% 17%;                  /* #2d2d2a olive-gray */
     --card-foreground: 37 10% 89%;      /* #e8e5df */
-    --popover: 340 4% 23%;             /* #3e3739 */
+    --popover: 60 3% 17%;              /* #2d2d2a */
     --popover-foreground: 37 10% 89%;   /* #e8e5df */
     --primary: 37 10% 89%;             /* #e8e5df — light buttons on dark bg */
     --primary-foreground: 0 7% 3%;      /* #080707 — dark text on light buttons */
@@ -55,8 +55,8 @@
     --accent-foreground: 0 7% 3%;      /* #080707 */
     --destructive: 0 62% 55%;          /* lighter red for dark bg legibility */
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 0%;                 /* black border for dark mode visibility */
-    --input: 0 0% 0%;                  /* black input border for dark mode visibility */
+    --border: 348 3% 34%;               /* #5a5556 warm gray border */
+    --input: 348 3% 34%;               /* #5a5556 warm gray input border */
     --ring: 37 10% 89%;                /* warm off-white ring */
     --chart-1: 37 10% 89%;
     --chart-2: 40 14% 65%;
@@ -69,7 +69,7 @@
     --sidebar-primary-foreground: 0 7% 3%;
     --sidebar-accent: 340 4% 16%;
     --sidebar-accent-foreground: 37 10% 89%;
-    --sidebar-border: 0 0% 0%;
+    --sidebar-border: 348 3% 34%;
     --sidebar-ring: 37 10% 89%;
   }
 }
