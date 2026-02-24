@@ -3,9 +3,8 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Download, File, Loader2, RefreshCw, TriangleAlert, Wand2, X } from 'lucide-react';
+import { CheckCircle, Download, Wand2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Buffer } from 'buffer';
 
 interface KeyfileGeneratorProps {

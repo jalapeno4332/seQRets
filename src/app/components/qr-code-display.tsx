@@ -2,7 +2,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Download, Printer, Sparkles, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Printer, FileArchive, TriangleAlert, Loader2, Lock, Save, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useState, useRef } from 'react';
 import JSZip from 'jszip';

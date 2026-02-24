@@ -8,8 +8,6 @@
   "scripts": {
     "build:crypto": "npm run build --workspace=@seqrets/crypto",
     "dev": "npm run build:crypto && next dev --port 9002",
-    "genkit:dev": "dotenv -e .env -- tsx src/ai/dev.ts",
-    "genkit:watch": "dotenv -e .env -- tsx --watch src/ai/dev.ts",
     "build": "npm run build:crypto && next build",
     "start": "next start",
     "type-check": "tsc --noEmit",
@@ -43,7 +41,6 @@
     "@scure/bip39": "^1.3.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "dotenv": "^16.5.0",
     "html2canvas": "^1.4.1",
     "jsqr": "^1.4.0",
     "jszip": "^3.10.1",

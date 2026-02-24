@@ -10,11 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
-    },
-    "./worker": {
-      "types": "./dist/worker.d.ts",
-      "import": "./dist/worker.mjs",
-      "require": "./dist/worker.js"
     }
   },
   "scripts": {
