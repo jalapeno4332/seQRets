@@ -342,7 +342,7 @@ Copyright (c) 2026 seQRets — All rights reserved where applicable.
 
 ## ⚠️ Disclaimer
 
-For the highest level of security, consider using seQRets on a computer specifically provisioned for secret management (no data persistence or unnecessary network connectivity). While seQRets is designed to work safely in everyday environments, air-gapped operation eliminates network-based attack vectors entirely.
+For the highest level of security, consider using seQRets on a computer specifically provisioned for secret management with no unnecessary network connectivity. While seQRets is designed to work safely in everyday environments, air-gapped operation eliminates network-based attack vectors entirely.
 
 The developers, contributors, and maintainers of seQRets cannot be held liable for lost or stolen secrets. **USE AT YOUR OWN RISK.**
 
