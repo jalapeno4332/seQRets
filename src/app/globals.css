@@ -55,8 +55,8 @@
     --accent-foreground: 0 7% 3%;      /* #080707 */
     --destructive: 0 62% 55%;          /* lighter red for dark bg legibility */
     --destructive-foreground: 0 0% 98%;
-    --border: 340 4% 20%;              /* dark border */
-    --input: 340 4% 20%;               /* dark input border */
+    --border: 0 0% 0%;                 /* black border for dark mode visibility */
+    --input: 0 0% 0%;                  /* black input border for dark mode visibility */
     --ring: 37 10% 89%;                /* warm off-white ring */
     --chart-1: 37 10% 89%;
     --chart-2: 40 14% 65%;
@@ -69,7 +69,7 @@
     --sidebar-primary-foreground: 0 7% 3%;
     --sidebar-accent: 340 4% 16%;
     --sidebar-accent-foreground: 37 10% 89%;
-    --sidebar-border: 340 4% 20%;
+    --sidebar-border: 0 0% 0%;
     --sidebar-ring: 37 10% 89%;
   }
 }
