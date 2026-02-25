@@ -246,13 +246,17 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
 
     try {
         const canvas = await compositeQrOntoCard(elementToCapture, qrCodeUris[index], 4);
-        const imageUri = canvas.toDataURL('image/png');
+        const blob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/png');
+        });
+        const href = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.download = `${getShareTitle(index)}.png`;
-        link.href = imageUri;
+        link.href = href;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(href);
         toast({
             title: "Download Started",
             description: `Downloading ${getShareTitle(index)}.png`,
