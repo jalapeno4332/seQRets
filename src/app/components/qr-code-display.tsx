@@ -24,6 +24,7 @@ interface QrCodeDisplayProps {
 export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
   const { shares, totalShares, requiredShares, label, setId, isTextOnly, encryptedInstructions } = qrCodeData;
   const [qrCodeUris, setQrCodeUris] = useState<(string | null)[]>([]);
+  const [cardDataUrls, setCardDataUrls] = useState<(string | null)[]>([]);
   const { toast } = useToast();
   const [isLoadingImages, setIsLoadingImages] = useState(!isTextOnly);
 
@@ -221,56 +222,35 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     return canvas;
   };
 
-  const handleDownload = async (index: number) => {
-    if (!isTextOnly && isLoadingImages) {
-        toast({ variant: "destructive", title: "Images not ready", description: "The Qard images have not been generated yet." });
-        return;
-    }
-    if (!isTextOnly && !qrCodeUris[index]) {
-      toast({ variant: "destructive", title: "Image not ready", description: "The Qard image failed to generate." });
+  // Synchronous click handler — uses pre-generated card images so Safari
+  // doesn't lose the user-gesture context (which blocks programmatic downloads).
+  const handleDownload = (index: number) => {
+    const dataUrl = cardDataUrls[index];
+    if (!dataUrl) {
+      toast({ variant: "destructive", title: "Image not ready", description: "The Qard image is still being generated. Please try again in a moment." });
       return;
     }
 
-    const container = document.createElement('div');
-    container.innerHTML = getPrintableHtmlForShare(index);
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    document.body.appendChild(container);
-
-    const elementToCapture = document.getElementById(`qard-to-print-${index}`);
-    if (!elementToCapture) {
-        toast({ variant: "destructive", title: "Element not found", description: "Cannot find the Qard to download." });
-        document.body.removeChild(container);
-        return;
+    // Convert data URL to blob synchronously
+    const byteString = atob(dataUrl.split(',')[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
     }
-
-    try {
-        const canvas = await compositeQrOntoCard(elementToCapture, qrCodeUris[index], 4);
-        const blob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/png');
-        });
-        const href = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.download = `${getShareTitle(index)}.png`;
-        link.href = href;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(href);
-        toast({
-            title: "Download Started",
-            description: `Downloading ${getShareTitle(index)}.png`,
-        });
-    } catch (error) {
-        console.error("Error generating image for download:", error);
-        toast({
-            variant: "destructive",
-            title: "Download Failed",
-            description: "Could not generate the downloadable image.",
-        });
-    } finally {
-        document.body.removeChild(container);
-    }
+    const blob = new Blob([ia], { type: 'image/png' });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = `${getShareTitle(index)}.png`;
+    link.href = href;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(href);
+    toast({
+        title: "Download Started",
+        description: `Downloading ${getShareTitle(index)}.png`,
+    });
   };
 
   const handleDownloadTxt = (index: number) => {
@@ -293,7 +273,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
 
 
   const handleDownloadAll = async () => {
-    if (!isTextOnly && qrCodeUris.length !== shares.length) {
+    if (!isTextOnly && cardDataUrls.length !== shares.length) {
         toast({ variant: "destructive", title: "Images not ready", description: "Not all Qard images have been generated yet." });
         return;
     }
@@ -303,21 +283,9 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
             const title = getShareTitle(i);
             zip.file(`${title}.txt`, shares[i]);
 
-            if (!isTextOnly && qrCodeUris[i]) {
-                const container = document.createElement('div');
-                container.innerHTML = getPrintableHtmlForShare(i);
-                container.style.position = 'absolute';
-                container.style.left = '-9999px';
-                document.body.appendChild(container);
-
-                const elementToCapture = document.getElementById(`qard-to-print-${i}`);
-                if (elementToCapture) {
-                    const canvas = await compositeQrOntoCard(elementToCapture, qrCodeUris[i], 4);
-                    const pngDataUrl = canvas.toDataURL('image/png');
-                    const base64Data = pngDataUrl.substring(pngDataUrl.indexOf(',') + 1);
-                    zip.file(`${title}.png`, base64Data, { base64: true });
-                }
-                document.body.removeChild(container);
+            if (!isTextOnly && cardDataUrls[i]) {
+                const base64Data = cardDataUrls[i]!.substring(cardDataUrls[i]!.indexOf(',') + 1);
+                zip.file(`${title}.png`, base64Data, { base64: true });
             }
         }
 
@@ -445,6 +413,41 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     generateQrUris();
   }, [shares, isTextOnly]);
 
+  // Pre-generate card images as data URLs after QR codes are ready.
+  // This allows the PNG download click handler to be fully synchronous,
+  // which is required by Safari (async breaks the user-gesture context).
+  useEffect(() => {
+    if (isTextOnly || isLoadingImages || qrCodeUris.length !== shares.length) {
+      setCardDataUrls([]);
+      return;
+    }
+    let cancelled = false;
+    const preGenerate = async () => {
+      const urls: (string | null)[] = [];
+      for (let i = 0; i < shares.length; i++) {
+        if (cancelled) return;
+        if (!qrCodeUris[i]) { urls.push(null); continue; }
+        const container = document.createElement('div');
+        container.innerHTML = getPrintableHtmlForShare(i);
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        document.body.appendChild(container);
+        const el = document.getElementById(`qard-to-print-${i}`);
+        if (!el) { urls.push(null); document.body.removeChild(container); continue; }
+        try {
+          const canvas = await compositeQrOntoCard(el, qrCodeUris[i], 4);
+          urls.push(canvas.toDataURL('image/png'));
+        } catch (err) {
+          console.error(`Pre-generation failed for share ${i}:`, err);
+          urls.push(null);
+        }
+        document.body.removeChild(container);
+      }
+      if (!cancelled) setCardDataUrls(urls);
+    };
+    preGenerate();
+    return () => { cancelled = true; };
+  }, [qrCodeUris, isLoadingImages, isTextOnly, shares.length]);
 
   const createdDate = new Date().toLocaleDateString('en-US');
 
@@ -552,7 +555,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
                     <p className="font-semibold text-sm">Share {index + 1} of {totalShares}</p>
                     <div className={cn("grid grid-cols-1 gap-2 mt-2 w-full max-w-[252.7px]", isTextOnly || !qrCodeUris[index] ? "grid-cols-1" : "grid-cols-2")}>
                         {!isTextOnly && qrCodeUris[index] && (
-                            <Button variant="outline" size="sm" onClick={() => handleDownload(index)} disabled={isLoadingImages} className="col-span-1">
+                            <Button variant="outline" size="sm" onClick={() => handleDownload(index)} disabled={!cardDataUrls[index]} className="col-span-1">
                                 PNG
                             </Button>
                         )}
