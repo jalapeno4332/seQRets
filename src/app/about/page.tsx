@@ -9,12 +9,7 @@ import Link from "next/link";
 import { Header } from "../components/header";
 import { ConnectionStatus } from "../components/connection-status";
 import Image from "next/image";
-import { useTheme } from "next-themes";
-
 export default function AboutPage() {
-    const { resolvedTheme } = useTheme();
-    const logoSrc = resolvedTheme === 'dark' ? '/icons/logo-dark.png' : '/icons/logo-light.png';
-
     return (
         <main className="flex min-h-screen flex-col items-center p-4 sm:p-8 md:p-12">
             <div className="w-full max-w-4xl mx-auto relative">
@@ -30,7 +25,8 @@ export default function AboutPage() {
 
                 <div className="text-center mb-10 pt-16 sm:pt-0">
                     <div className="flex justify-center items-center gap-2.5 mb-6">
-                        <Image src={logoSrc} alt="seQRets Logo" width={144} height={144} className="self-start -mt-2" priority />
+                        <Image src="/icons/logo-light.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 dark:hidden" priority />
+                        <Image src="/icons/logo-dark.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 hidden dark:block" priority />
                         <div>
                             <h1 className="font-body text-5xl md:text-7xl font-black text-foreground tracking-tighter">
                                 seQRets

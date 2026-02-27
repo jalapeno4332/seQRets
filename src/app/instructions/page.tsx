@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, Lock, KeyRound, Eye, EyeOff, Paperclip, HelpCircle, Loader2, CheckCircle2, X, FileDown, ArrowDown, ShieldCheck, Download, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useTheme } from 'next-themes';
 import { Header } from '../components/header';
 import { InstructionsFileUpload } from '../components/instructions-file-upload';
 import { KeyfileUpload } from '../components/keyfile-upload';
@@ -37,8 +36,6 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export default function InstructionsPage() {
-  const { resolvedTheme } = useTheme();
-  const logoSrc = resolvedTheme === 'dark' ? '/icons/logo-dark.png' : '/icons/logo-light.png';
   const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState('encrypt');
@@ -223,7 +220,8 @@ export default function InstructionsPage() {
 
         <div className="text-center mb-10 pt-16 sm:pt-0">
           <div className="flex justify-center items-center gap-2.5 mb-6">
-            <Image src={logoSrc} alt="seQRets Logo" width={144} height={144} className="self-start -mt-2" priority />
+            <Image src="/icons/logo-light.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 dark:hidden" priority />
+            <Image src="/icons/logo-dark.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 hidden dark:block" priority />
             <div>
               <h1 className="font-body text-5xl md:text-7xl font-black text-foreground tracking-tighter">
                 seQRets

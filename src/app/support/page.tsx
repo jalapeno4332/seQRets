@@ -9,13 +9,10 @@ import { ArrowLeft, Bot } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { Header } from "../components/header";
-import { useTheme } from "next-themes";
 import { BobChatInterface } from '../components/bob-chat-interface';
 
 
 export default function SupportPage() {
-    const { resolvedTheme } = useTheme();
-    const logoSrc = resolvedTheme === 'dark' ? '/icons/logo-dark.png' : '/icons/logo-light.png';
 
     return (
         <main className="flex min-h-screen flex-col items-center p-4 sm:p-8 md:p-12">
@@ -32,7 +29,8 @@ export default function SupportPage() {
 
                 <header className="text-center mb-6 pt-16 sm:pt-0">
                     <div className="flex justify-center items-center gap-2.5">
-                        <Image src={logoSrc} alt="seQRets Logo" width={144} height={144} className="self-start -mt-2" priority />
+                        <Image src="/icons/logo-light.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 dark:hidden" priority />
+                        <Image src="/icons/logo-dark.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 hidden dark:block" priority />
                         <div>
                             <h1 className="font-body text-5xl md:text-7xl font-black text-foreground tracking-tighter">
                                 seQRets

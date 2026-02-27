@@ -15,16 +15,10 @@ import { BobChatInterface } from "./components/bob-chat-interface";
 import { BitcoinTicker } from "./components/bitcoin-ticker";
 import { ConnectionStatus } from "./components/connection-status";
 import { WelcomeGuide } from "./components/welcome-guide";
-import { useTheme } from "next-themes";
 
 
 function App() {
   const [activeTab, setActiveTab] = React.useState<'create' | 'restore'>('create');
-  const [mounted, setMounted] = React.useState(false);
-  const { resolvedTheme } = useTheme();
-  const logoSrc = mounted && resolvedTheme === 'dark' ? '/icons/logo-dark.png' : '/icons/logo-light.png';
-
-  React.useEffect(() => { setMounted(true); }, []);
 
   const searchParams = useSearchParams();
 
@@ -65,7 +59,8 @@ function App() {
         <Header activeTab={activeTab} onTabChange={setActiveTab}/>
         <header className="text-center mb-6 pt-16 sm:pt-0">
           <div className="flex justify-center items-center gap-2.5">
-            <Image src={logoSrc} alt="seQRets Logo" width={144} height={144} className="self-start -mt-2" data-ai-hint="logo" priority />
+            <Image src="/icons/logo-light.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 dark:hidden" data-ai-hint="logo" priority />
+            <Image src="/icons/logo-dark.png" alt="seQRets Logo" width={144} height={144} className="self-start -mt-2 hidden dark:block" data-ai-hint="logo" priority />
             <div>
               <h1 className="font-body text-5xl md:text-7xl font-black text-foreground tracking-tighter">
                 seQRets
