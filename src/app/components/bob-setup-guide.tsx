@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Bot, ExternalLink, Key, Check, AlertCircle } from 'lucide-react';
+import { Bot, ExternalLink, Key, Check, AlertCircle, MessageCircle, User } from 'lucide-react';
 import { setApiKey } from '@/ai/flows/ask-bob-flow';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -38,12 +38,44 @@ export function BobSetupGuide({ onKeyConfigured }: BobSetupGuideProps) {
           <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-muted flex items-center justify-center">
             <Bot className="h-6 w-6" />
           </div>
-          <CardTitle>Set Up Bob AI</CardTitle>
+          <CardTitle>Meet Bob — Your AI Guide</CardTitle>
           <CardDescription>
-            Bob needs a Google Gemini API key to work. It's free and takes about 2 minutes to set up.
+            Bob is an AI assistant built into seQRets that explains encryption concepts, guides you through features, and helps troubleshoot issues.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Mini chat preview */}
+          <div className="rounded-lg border bg-background p-3 space-y-2 text-xs">
+            <div className="flex items-start gap-2">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted">
+                <User className="h-3 w-3 text-muted-foreground" />
+              </div>
+              <p className="rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">"How does Shamir&apos;s Secret Sharing work?"</p>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                <Bot className="h-3 w-3 text-primary" />
+              </div>
+              <p className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-foreground">"It splits your secret into multiple shares so that only a chosen number of them are needed to reconstruct it..."</p>
+            </div>
+          </div>
+
+          {/* Example prompts */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <MessageCircle className="h-3 w-3" /> Try asking Bob:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {['Help me set up an Inheritance Plan', 'What is Argon2id?', 'How do I use a keyfile?'].map((q) => (
+                <span key={q} className="inline-block rounded-full border px-2.5 py-1 text-xs text-muted-foreground">{q}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Setup heading */}
+          <div className="border-t pt-3">
+            <p className="text-xs font-medium text-center text-muted-foreground mb-3">Connect Bob with a free Google Gemini API key — takes about 2 minutes</p>
+          </div>
           <div className="space-y-3 text-sm text-muted-foreground">
             <div className="flex items-start gap-3">
               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">1</div>
