@@ -3,7 +3,7 @@
 > **Baseline audit:** April 2026 @ v1.10.7 · **Maintained current through:** v1.14.1 (July 2026) · **Reviewer:** Source-code review via Claude (Anthropic)
 > **Scope:** Full source audit of `packages/desktop/`, `packages/crypto/`, and `src-tauri/` (Rust backend), plus the cross-cutting web + crypto items from the pre-launch hardening pass (see [Pre-Launch Hardening Pass](#pre-launch-hardening-pass-v1107--v1120) below and [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md) for the full checklist).
 >
-> This is a **living document**, not a frozen snapshot: the baseline finding set (11 items) was established at v1.10.7, and the doc is kept current as remediation lands. It reflects the codebase as of **v1.12.0**, at which point the pre-launch hardening pass is complete.
+> This is a **living document**, not a frozen snapshot: the baseline finding set (11 items) was established at v1.10.7, and the doc is kept current as remediation lands. It reflects the codebase as of **v1.14.1**; the pre-launch hardening pass was completed at v1.12.0.
 
 ---
 
