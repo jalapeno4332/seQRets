@@ -75,6 +75,15 @@ export interface ParsedShare {
     data: string;              // base64 share data
     hash: string | null;       // full 64-char hex, or null if legacy
     hashValid: boolean | null; // true = match, false = mismatch, null = legacy (no hash)
+    /**
+     * Share-format version from the `v=` segment. null = legacy share
+     * (created before the version marker existed; payload is unpadded).
+     * 1 = current (payload zero-padded to PAYLOAD_PAD_BUCKET multiples).
+     * parseShare throws on versions above the current one rather than
+     * returning them — a frozen Qard from a newer app must produce a
+     * clear "update your software" error, never a silent misparse.
+     */
+    version: number | null;
     // Optional recovery metadata. Present only when the share was
     // generated with `embedRecoveryInfo: true`. All three are tied to
     // the same set and are covered by the SHA-256 hash.

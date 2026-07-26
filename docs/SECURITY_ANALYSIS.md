@@ -1,6 +1,6 @@
 # seQRets Desktop App — Security Analysis
 
-> **Baseline audit:** April 2026 @ v1.10.7 · **Maintained current through:** v1.13.0 (July 2026) · **Reviewer:** Source-code review via Claude (Anthropic)
+> **Baseline audit:** April 2026 @ v1.10.7 · **Maintained current through:** v1.14.0 (July 2026) · **Reviewer:** Source-code review via Claude (Anthropic)
 > **Scope:** Full source audit of `packages/desktop/`, `packages/crypto/`, and `src-tauri/` (Rust backend), plus the cross-cutting web + crypto items from the pre-launch hardening pass (see [Pre-Launch Hardening Pass](#pre-launch-hardening-pass-v1107--v1120) below and [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md) for the full checklist).
 >
 > This is a **living document**, not a frozen snapshot: the baseline finding set (11 items) was established at v1.10.7, and the doc is kept current as remediation lands. It reflects the codebase as of **v1.12.0**, at which point the pre-launch hardening pass is complete.
@@ -602,6 +602,14 @@ Separate from the 11 baseline findings above, a comprehensive read-only security
 
 ---
 
+## Post-Audit Changes (v1.14.0)
+
+A pre-launch external review raised three format/exposure weaknesses; all three are closed in v1.14.0. Because Qards are frozen artifacts (printed cards, steel plates), these were the last changes of their kind that could ship cheaply.
+
+1. **Length side channel — closed.** XChaCha20-Poly1305 is length-preserving and every Shamir share is full-ciphertext length, so a single Qard leaked the approximate secret size (the BIP-39 entropy optimization even made 12- vs 24-word seeds distinguishable). The compressed payload is now zero-padded to 192-byte buckets before encryption (`padPayload` in `crypto.ts`, `pad_payload` in `crypto.rs` — shares only; vault/plan blobs unchanged). Padding is deterministic zeros inside the AEAD envelope (tag-covered). Restore needs no unpad step: gzip streams self-terminate, pako ignores trailing zeros and flate2's `GzDecoder` never reads past the footer — verified empirically and in crate source — so **pre-v1.14 apps and every deployed recover.html copy restore padded Qards unchanged**. Guarded by new Rust tests (`test_padded_roundtrip_and_bucket_length`, `test_padding_hides_payload_size`, `test_ts_generated_padded_payload_decrypts`) and the A/B verification suite.
+2. **Format-version marker — added.** Every new share carries `v=1` as its first metadata segment, covered by the SHA-256 hash. Old parsers ignore unknown `key=value` segments (and hash them correctly), so v=1 shares restore in older software; new parsers throw a clear "created by a newer version — update" error for `v ≥ 2` instead of misparsing. This turns a future format change from an ambiguous red X into a diagnosable condition — the difference matters most to an executor decades from now.
+3. **Label exposure — gated.** The label was already encrypted in the payload but also appeared in plaintext on the card face, in PNG/TXT/ZIP/vault file names, in the web print-window title, in the desktop temp print file, and in smart-card item metadata (listed without PIN). A new "Show label on Qards & file names" switch (default on, with honest in-app copy replacing the previously misleading "will be encrypted" help text) gates every one of those surfaces for a blind export. The size estimator was also brought into exact fidelity with the real pipeline (label included, real gzip options, bucket math).
+
 ## Post-Audit Changes (v1.13.0)
 
 **SLIP-39 share detection & validation** (`packages/crypto/src/slip39.ts`, new) — recognizes Trezor-style SLIP-39 recovery shares (20/33 words) on entry and after restore, validating their RS1024 checksum so a mistyped word is caught before encryption. Security-relevant properties:
@@ -693,5 +701,5 @@ The cryptographic primitives (XChaCha20-Poly1305, Argon2id, Shamir's Secret Shar
 ---
 
 <p align="center">
-<em>This analysis was conducted through a full source-code review of all Rust, TypeScript, and configuration files in the seQRets desktop application, with a whole-codebase pre-launch hardening pass (web + desktop + crypto + JavaCard) completed at v1.12.0. All 11 baseline findings were remediated immediately following the original audit; the pre-launch pass items are itemized above and tracked in <code>PRELAUNCH_AUDIT.md</code>. Cryptographic correctness is guarded by a permanent Rust↔TS parity test and end-to-end restore round-trips against every supported Qard layout. Last updated July 24, 2026 (v1.13.0 "🔥 Ignition").</em>
+<em>This analysis was conducted through a full source-code review of all Rust, TypeScript, and configuration files in the seQRets desktop application, with a whole-codebase pre-launch hardening pass (web + desktop + crypto + JavaCard) completed at v1.12.0. All 11 baseline findings were remediated immediately following the original audit; the pre-launch pass items are itemized above and tracked in <code>PRELAUNCH_AUDIT.md</code>. Cryptographic correctness is guarded by a permanent Rust↔TS parity test and end-to-end restore round-trips against every supported Qard layout. Last updated July 26, 2026 (v1.14.0 "🔥 Ignition").</em>
 </p>

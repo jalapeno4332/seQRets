@@ -15,7 +15,7 @@ import { CreateSharesResult } from '@/lib/types';
 import { createShares } from '@/lib/desktop-crypto';
 import { SeedPhraseGenerator } from '@/components/ui/seed-phrase-generator';
 import { scrollToReveal } from '@/components/ui/scroll-utils';
-import { gzip, detectSlip39 } from '@seqrets/crypto';
+import { gzip, detectSlip39, PAYLOAD_PAD_BUCKET } from '@seqrets/crypto';
 import { tryGetEntropy } from '@/lib/crypto';
 import { HelpHint } from '@/components/ui/help-hint';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -39,6 +39,10 @@ export function CreateSharesForm() {
   const [totalShares, setTotalShares] = useState(3);
   const [requiredShares, setRequiredShares] = useState(2);
   const [embedRecoveryInfo, setEmbedRecoveryInfo] = useState(true);
+  // Label visibility on exports (card face, print, file names). Default ON —
+  // preserves familiar behavior; the switch next to the label input explains
+  // the trade-off. OFF = "blind export".
+  const [showLabelOnExports, setShowLabelOnExports] = useState(true);
   const [generatedQrData, setGeneratedQrData] = useState<CreateSharesResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
@@ -135,28 +139,30 @@ export function CreateSharesForm() {
             setSeedValidationStatus('unchecked');
         }
 
+        // Mirror the real pipeline: same payload shape (label included), same
+        // gzip options, then the same length-privacy padding as padPayload.
+        const gzipOpts = { level: 9, windowBits: 15, memLevel: 9 } as const;
         const potentialEntropy = tryGetEntropy(cleanSecret);
         let compressedSize;
         if (potentialEntropy) {
-            const payload = JSON.stringify({ secret: potentialEntropy.entropy.toString('base64'), mnemonicLengths: potentialEntropy.chunks.map(c => c.split(' ').length), isMnemonic: true });
-            compressedSize = gzip(payload).length;
+            const payload = JSON.stringify({ secret: potentialEntropy.entropy.toString('base64'), label: label || '', isMnemonic: true, mnemonicLengths: potentialEntropy.chunks.map(c => c.split(' ').length) });
+            compressedSize = gzip(payload, gzipOpts).length;
         } else {
-            const payload = JSON.stringify({ secret: cleanSecret, isMnemonic: false });
-            compressedSize = gzip(payload, {
-                level: 9,
-                windowBits: 15,
-                memLevel: 9,
-            }).length;
+            const payload = JSON.stringify({ secret: cleanSecret, label: label || '', isMnemonic: false });
+            compressedSize = gzip(payload, gzipOpts).length;
         }
+        const paddedSize = Math.max(PAYLOAD_PAD_BUCKET, Math.ceil(compressedSize / PAYLOAD_PAD_BUCKET) * PAYLOAD_PAD_BUCKET);
 
-        const finalSize = (compressedSize * 1.33) + 150;
+        // ×1.33 = base64 expansion; +154 covers the envelope segments
+        // (seQRets| + salt + v=1 + t/n/i + sha256:) and the nonce/tag bytes.
+        const finalSize = (paddedSize * 1.33) + 154;
         setEstimatedShareSize(Math.ceil(finalSize));
 
     } else {
         setEstimatedShareSize(0);
         setSeedValidationStatus('unchecked');
     }
-}, [secret]);
+}, [secret, label]);
 
 
   const handleGenerate = async () => {
@@ -493,7 +499,10 @@ export function CreateSharesForm() {
                                 <div className="flex items-center gap-2">
                                     <Label htmlFor="label">Optional Label</Label>
                                     <HelpHint>
-                                        Add a label to your secret (e.g., "Inheritance Wallet", "Bitcoin Cold Storage"). This label will be encrypted along with your secret and will appear when you restore it.
+                                        <p>Add a label to your secret (e.g., &quot;Inheritance Wallet&quot;). An encrypted copy is stored with your secret and appears when you restore it.</p>
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                            Heads up: unless you turn off &quot;Show label on Qards &amp; file names&quot; below, the label is also printed on each Qard and used in file names — where anyone who sees the card or file can read it. Avoid amounts, exchange names, or anything you wouldn&apos;t write on the outside of an envelope.
+                                        </p>
                                     </HelpHint>
                                 </div>
                                 <Input id="label" placeholder="e.g., 'Inheritance Wallet'" value={label} onChange={(e) => setLabel(e.target.value)} />
@@ -568,6 +577,32 @@ export function CreateSharesForm() {
                             <Switch id="embed-recovery-info" checked={embedRecoveryInfo} onCheckedChange={setEmbedRecoveryInfo} />
                           </div>
                         )}
+                        {label.trim() !== '' && (
+                          <div className="flex items-center justify-between rounded-md border p-4 gap-3">
+                            <div className="flex flex-col gap-1 flex-1 min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <Label htmlFor="show-label-on-exports" className="text-base font-medium">
+                                  Show label on Qards &amp; file names
+                                </Label>
+                                <HelpHint>
+                                  <p className="font-bold mb-2">Where your label appears</p>
+                                  <p>
+                                    When on, &quot;{label.trim()}&quot; is printed on each Qard card and used in the PNG, TXT, ZIP, and vault file names — easy to sort, but readable by anyone who sees a card or file.
+                                  </p>
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    Turn this off for a &quot;blind&quot; export: cards show only the card number and set ID, and files are named seQRets-Qard-01, seQRets-Qard-02, and so on. The encrypted copy of the label is unaffected — it still appears when the secret is restored.
+                                  </p>
+                                </HelpHint>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {showLabelOnExports
+                                  ? 'On — the label is readable on every card and file name'
+                                  : 'Off — cards and file names stay blind; the label only appears after restore'}
+                              </p>
+                            </div>
+                            <Switch id="show-label-on-exports" checked={showLabelOnExports} onCheckedChange={setShowLabelOnExports} />
+                          </div>
+                        )}
                       </div>
                     </div>
                 </>
@@ -615,6 +650,7 @@ export function CreateSharesForm() {
                 <QrCodeDisplay
                   qrCodeData={generatedQrData}
                   keyfileUsed={!!keyfile}
+                  showLabelOnExports={showLabelOnExports}
                 />
             </CardContent>
         </>

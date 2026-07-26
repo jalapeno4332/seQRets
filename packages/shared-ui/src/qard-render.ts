@@ -19,10 +19,19 @@
 import JSZip from 'jszip';
 import QRCode from 'qrcode';
 
-/** `seQRets-Qard-<sanitized-label->NN` — used for PNG/TXT/ZIP entry names. */
-export function qardFileTitle(label: string | undefined | null, index: number): string {
-  const sanitizedLabel = label ? `${label.replace(/[^a-zA-Z0-9_-]/g, '')}-` : '';
-  return `seQRets-Qard-${sanitizedLabel}${String(index + 1).padStart(2, '0')}`;
+/**
+ * `seQRets-Qard-<sanitized-label->NN` — used for PNG/TXT/ZIP entry names.
+ *
+ * When no label is given (blind export) and a setId is available, the set ID
+ * is used instead: `seQRets-Qard-<setId>-NN`. Without it, every set's files
+ * would collide on identical generic names (and identical sizes, thanks to
+ * payload padding). The set ID is safe to expose here — it is printed on the
+ * card face even in blind mode and derivable from the share data itself.
+ */
+export function qardFileTitle(label: string | undefined | null, index: number, setId?: string | null): string {
+  const disambiguator = label || setId || '';
+  const sanitized = disambiguator ? `${disambiguator.replace(/[^a-zA-Z0-9_-]/g, '')}-` : '';
+  return `seQRets-Qard-${sanitized}${String(index + 1).padStart(2, '0')}`;
 }
 
 /**
@@ -246,15 +255,17 @@ export function renderQardToCanvas(qrDataUrl: string, opts: QardCardOptions): Pr
 export async function buildQardsZip(args: {
   shares: string[];
   label?: string | null;
+  /** Used in entry names when label is absent (blind export) — see qardFileTitle. */
+  setId?: string | null;
   /** Card PNG data URL per index, or null to skip (e.g. text-only mode). */
   getPngDataUrl: (index: number) => string | null | Promise<string | null>;
   encryptedInstructions?: unknown | null;
 }): Promise<JSZip> {
-  const { shares, label, getPngDataUrl, encryptedInstructions } = args;
+  const { shares, label, setId, getPngDataUrl, encryptedInstructions } = args;
   const zip = new JSZip();
 
   for (let i = 0; i < shares.length; i++) {
-    const title = qardFileTitle(label, i);
+    const title = qardFileTitle(label, i, setId);
     zip.file(`${title}.txt`, shares[i]);
 
     const pngDataUrl = await getPngDataUrl(i);

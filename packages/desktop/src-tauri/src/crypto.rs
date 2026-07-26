@@ -83,6 +83,30 @@ fn gzip_compress(data: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("Gzip finish error: {e}"))
 }
 
+/// Length-privacy bucket for Qard share payloads. Must match
+/// PAYLOAD_PAD_BUCKET in packages/crypto/src/crypto.ts — the TS↔Rust
+/// parity tests hold the two implementations together.
+const PAYLOAD_PAD_BUCKET: usize = 192;
+
+/// Zero-pad a compressed share payload up to the next PAYLOAD_PAD_BUCKET
+/// multiple, so a single Qard's length doesn't reveal the secret's size
+/// (XChaCha20 is length-preserving and every Shamir share is
+/// full-ciphertext length). Padding must follow compression (gzip would
+/// collapse it) and must be zeros: pako (web + recover.html) skips
+/// trailing NUL bytes after a gzip stream, and flate2's GzDecoder never
+/// reads past the gzip footer — so padded payloads stay restorable by
+/// every already-shipped decoder. Applied to Qard shares only
+/// (`crypto_create`), NOT to vault/plan blobs.
+fn pad_payload(compressed: Vec<u8>) -> Vec<u8> {
+    let target = std::cmp::max(
+        PAYLOAD_PAD_BUCKET,
+        compressed.len().div_ceil(PAYLOAD_PAD_BUCKET) * PAYLOAD_PAD_BUCKET,
+    );
+    let mut padded = compressed;
+    padded.resize(target, 0);
+    padded
+}
+
 fn gzip_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut decoder = GzDecoder::new(data);
     let mut out = Vec::new();
@@ -145,9 +169,17 @@ fn encrypt_impl(
     json: String,
     password: String,
     keyfile_b64: Option<String>,
+    pad: bool,
 ) -> Result<CryptoResult, String> {
     let password = Zeroizing::new(password);
-    let compressed = Zeroizing::new(gzip_compress(json.as_bytes())?);
+    let compressed_raw = gzip_compress(json.as_bytes())?;
+    // Qard shares get length-privacy padding (see pad_payload); vault and
+    // plan blobs are disk artifacts and stay unpadded for now.
+    let compressed = Zeroizing::new(if pad {
+        pad_payload(compressed_raw)
+    } else {
+        compressed_raw
+    });
 
     let mut salt = [0u8; SALT_LENGTH];
     rand::rng().fill_bytes(&mut salt);
@@ -219,7 +251,7 @@ pub async fn crypto_create(
     password: String,
     keyfile_b64: Option<String>,
 ) -> Result<CryptoResult, String> {
-    run_blocking(move || encrypt_impl(json_payload, password, keyfile_b64)).await
+    run_blocking(move || encrypt_impl(json_payload, password, keyfile_b64, true)).await
 }
 
 /// Derives a key with Argon2id, decrypts `encrypted_b64` (base64 of the
@@ -248,7 +280,7 @@ pub async fn crypto_encrypt_blob(
     password: String,
     keyfile_b64: Option<String>,
 ) -> Result<CryptoResult, String> {
-    run_blocking(move || encrypt_impl(json, password, keyfile_b64)).await
+    run_blocking(move || encrypt_impl(json, password, keyfile_b64, false)).await
 }
 
 /// Derives a key with Argon2id, decrypts `data_b64` (base64 of nonce||ciphertext),
@@ -280,13 +312,53 @@ mod tests {
         let payload = r#"{"secret":"hello world","label":"test","isMnemonic":false}"#.to_string();
         let password = "s3cur3P@ssw0rd!".to_string();
 
-        let result = encrypt_impl(payload.clone(), password.clone(), None)
+        let result = encrypt_impl(payload.clone(), password.clone(), None, false)
             .expect("encrypt should not fail");
 
         let decrypted = decrypt_impl(result.salt, result.data, password, None)
             .expect("decrypt should not fail");
 
         assert_eq!(decrypted, payload, "decrypted payload must match original");
+    }
+
+    // Padded (Qard-share) mode: round trip must survive the zero padding,
+    // and the plaintext handed to the cipher must be an exact bucket multiple
+    // (ciphertext = nonce 24 + padded + tag 16).
+    #[test]
+    fn test_padded_roundtrip_and_bucket_length() {
+        let payload = r#"{"secret":"hello world","label":"test","isMnemonic":false}"#.to_string();
+        let password = "s3cur3P@ssw0rd!".to_string();
+
+        let result = encrypt_impl(payload.clone(), password.clone(), None, true)
+            .expect("padded encrypt should not fail");
+
+        let raw = STANDARD.decode(&result.data).expect("data must be base64");
+        let padded_len = raw.len() - NONCE_LENGTH - 16;
+        assert_eq!(
+            padded_len % PAYLOAD_PAD_BUCKET,
+            0,
+            "padded plaintext must be a PAYLOAD_PAD_BUCKET multiple, got {padded_len}"
+        );
+        assert!(padded_len >= PAYLOAD_PAD_BUCKET);
+
+        let decrypted = decrypt_impl(result.salt, result.data, password, None)
+            .expect("padded decrypt should not fail (GzDecoder ignores trailing bytes)");
+        assert_eq!(decrypted, payload);
+    }
+
+    // Two payloads of different sizes inside the same bucket must produce
+    // identical ciphertext lengths — the length-privacy property itself.
+    #[test]
+    fn test_padding_hides_payload_size() {
+        let short = r#"{"secret":"AAAA","label":"","isMnemonic":false}"#.to_string();
+        let long = format!(r#"{{"secret":"{}","label":"a wallet label","isMnemonic":false}}"#, "B".repeat(60));
+        let pw = "pw-for-length-test".to_string();
+
+        let r1 = encrypt_impl(short, pw.clone(), None, true).unwrap();
+        let r2 = encrypt_impl(long, pw, None, true).unwrap();
+        let l1 = STANDARD.decode(&r1.data).unwrap().len();
+        let l2 = STANDARD.decode(&r2.data).unwrap().len();
+        assert_eq!(l1, l2, "same-bucket payloads must be indistinguishable by length");
     }
 
     #[test]
@@ -296,7 +368,7 @@ mod tests {
         // 32 random bytes encoded as base64
         let keyfile_b64 = Some(STANDARD.encode(b"0123456789abcdef0123456789abcdef"));
 
-        let result = encrypt_impl(payload.clone(), password.clone(), keyfile_b64.clone())
+        let result = encrypt_impl(payload.clone(), password.clone(), keyfile_b64.clone(), false)
             .expect("encrypt with keyfile should not fail");
 
         let decrypted = decrypt_impl(result.salt, result.data, password, keyfile_b64)
@@ -328,6 +400,23 @@ mod tests {
         assert_eq!(json, v["expect_json"].as_str().unwrap());
     }
 
+    // v=1 padded parity: the fixture was produced by the TS v=1 pipeline
+    // (createShares 1-of-1 — data IS nonce||ciphertext of a zero-padded
+    // payload). Rust must decrypt it and transparently ignore the padding.
+    #[test]
+    fn test_ts_generated_padded_payload_decrypts() {
+        let fixture: serde_json::Value = serde_json::from_str(TS_PARITY_FIXTURE).unwrap();
+        let v = &fixture["padded_no_keyfile"];
+        let json = decrypt_impl(
+            v["salt"].as_str().unwrap().to_string(),
+            v["data"].as_str().unwrap().to_string(),
+            v["password"].as_str().unwrap().to_string(),
+            None,
+        )
+        .expect("TS-encrypted PADDED payload must decrypt in Rust");
+        assert_eq!(json, v["expect_json"].as_str().unwrap());
+    }
+
     #[test]
     fn test_ts_generated_blob_decrypts_with_keyfile() {
         let fixture: serde_json::Value = serde_json::from_str(TS_PARITY_FIXTURE).unwrap();
@@ -349,14 +438,14 @@ mod tests {
     #[ignore]
     fn gen_rust_blob_for_ts() {
         let payload = r#"{"parity":"rust-to-ts","n":9}"#.to_string();
-        let result = encrypt_impl(payload, "parity-password-3".to_string(), None).unwrap();
+        let result = encrypt_impl(payload, "parity-password-3".to_string(), None, false).unwrap();
         println!("RUST_BLOB salt={} data={}", result.salt, result.data);
     }
 
     #[test]
     fn test_wrong_password_fails() {
         let payload = r#"{"secret":"my secret","isMnemonic":false}"#.to_string();
-        let result = encrypt_impl(payload, "correct-password".to_string(), None)
+        let result = encrypt_impl(payload, "correct-password".to_string(), None, false)
             .expect("encrypt should succeed");
 
         let err = decrypt_impl(result.salt, result.data, "wrong-password".to_string(), None);
@@ -370,8 +459,8 @@ mod tests {
         let payload = r#"{"secret":"test","isMnemonic":false}"#.to_string();
         let password = "pw".to_string();
 
-        let r1 = encrypt_impl(payload.clone(), password.clone(), None).unwrap();
-        let r2 = encrypt_impl(payload, password, None).unwrap();
+        let r1 = encrypt_impl(payload.clone(), password.clone(), None, false).unwrap();
+        let r2 = encrypt_impl(payload, password, None, false).unwrap();
 
         // Different salts means different keys means different ciphertext
         assert_ne!(r1.salt, r2.salt);

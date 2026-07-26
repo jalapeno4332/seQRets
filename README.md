@@ -77,6 +77,7 @@ seQRets uses industry-standard primitives entirely client-side. **The core crypt
 - **Splitting:** Shamir's Secret Sharing ([audited](https://github.com/privy-io/shamir-secret-sharing))
 - **RNG:** OS-backed CSPRNG (Rust `rand` on desktop, `crypto.getRandomValues` on web)
 - **Memory:** Rust `zeroize` on desktop; `fill(0)` + finally blocks on web
+- **Length privacy:** payloads are padded to 192-byte buckets before encryption, so a Qard's size doesn't reveal the secret's size; every Qard carries a hash-covered `v=1` format-version marker for decades-later diagnosability
 
 For the full cryptographic design and threat model, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 To report a vulnerability, see [SECURITY.md](SECURITY.md).

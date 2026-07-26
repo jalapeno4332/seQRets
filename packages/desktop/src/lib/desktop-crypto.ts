@@ -9,13 +9,15 @@
  * symmetric encryption/decryption happen natively in Rust.
  *
  * Wire format is bit-for-bit identical to the @noble/* JS implementation:
- *   Share string : seQRets|<salt_base64>|<share_data_base64>|sha256:<64_hex_chars>
+ *   Share string : seQRets|<salt_base64>|<share_data_base64>|v=1[|t=K|n=N|i=I]|sha256:<64_hex_chars>
  *   Encrypted blob : base64( nonce[24] || xchacha20_ciphertext_with_tag )
+ *   Share payloads are zero-padded to 192-byte buckets before encryption
+ *   (length privacy) — the padding is applied in Rust (crypto_create).
  */
 
 import { invoke } from '@tauri-apps/api/core';
 import { split, combine } from 'shamir-secret-sharing';
-import { buildSharePayload, parseSharePayload, appendShareHash, parseShare } from '@seqrets/crypto';
+import { buildSharePayload, parseSharePayload, appendShareHash, parseShare, SHARE_FORMAT_VERSION } from '@seqrets/crypto';
 // buffer-setup provides a Buffer polyfill for WKWebView (macOS) which does not
 // expose globalThis.Buffer. We still need Buffer for base64 encoding/decoding.
 import { Buffer } from './buffer-setup';
@@ -45,7 +47,7 @@ interface NativeCryptoResult {
  *   1. Build JSON payload (with BIP-39 entropy compaction if applicable)
  *   2. Rust: gzip → Argon2id key derivation → XChaCha20 encrypt → return (salt, nonce||ciphertext)
  *   3. TypeScript: Shamir split the raw (nonce||ciphertext) bytes
- *   4. Format each share as `seQRets|<salt>|<shareData_base64>`
+ *   4. Format each share as `seQRets|<salt>|<shareData_base64>|v=1[|t|n|i]|sha256:H`
  */
 export async function createShares(request: CreateSharesRequest): Promise<CreateSharesResult> {
     const { secret, password, totalShares, requiredShares, label, keyfile, embedRecoveryInfo } = request;
@@ -88,7 +90,10 @@ export async function createShares(request: CreateSharesRequest): Promise<Create
 
     // Step 4: Format shares with SHA-256 integrity hash.
     const formattedShares = encryptedShares.map((shareData, idx) => {
-        let core = `seQRets|${salt}|${Buffer.from(shareData).toString('base64')}`;
+        // v= is always the FIRST metadata segment, hash-covered like the
+        // rest — must stay in lockstep with createShares in @seqrets/crypto.
+        // (The Rust side already zero-padded the payload for v=1.)
+        let core = `seQRets|${salt}|${Buffer.from(shareData).toString('base64')}|v=${SHARE_FORMAT_VERSION}`;
         if (embedRecoveryInfo) {
             // 1-based index so it matches the visual "Qard #N" labelling.
             core += `|t=${requiredShares}|n=${totalShares}|i=${idx + 1}`;

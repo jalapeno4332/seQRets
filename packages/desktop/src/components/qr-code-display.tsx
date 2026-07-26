@@ -22,10 +22,21 @@ import { tempDir, join } from '@tauri-apps/api/path';
 interface QrCodeDisplayProps {
   qrCodeData: CreateSharesResult;
   keyfileUsed: boolean;
+  /**
+   * When false ("blind export"), the label is kept OFF every export surface —
+   * card face, print HTML (incl. the temp print file), PNG/TXT/ZIP file names,
+   * the vault file name, and smart-card item labels — so a card, file, or card
+   * listing reveals nothing but a number and set ID. The encrypted copy inside
+   * the payload is unaffected. Defaults to true, matching historical behavior.
+   */
+  showLabelOnExports?: boolean;
 }
 
-export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
+export function QrCodeDisplay({ qrCodeData, keyfileUsed, showLabelOnExports = true }: QrCodeDisplayProps) {
   const { shares, totalShares, requiredShares, label, setId, isTextOnly: isTextOnlyHint, encryptedInstructions } = qrCodeData;
+  // Every export surface reads exportLabel; only the on-screen header (the
+  // user's own session) keeps showing the real label regardless.
+  const exportLabel = showLabelOnExports ? label : null;
   // Ground-truth check: if any actual share exceeds the QR capacity limit,
   // force text-only mode regardless of the pre-generation estimate (which
   // can be wrong due to stale closures in the worker message handler).
@@ -54,7 +65,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
   const isNearLimit = !isTextOnly && shares.length > 0 && shares[0].length > QR_CAPACITY_WARNING;
   const [showScanWarning, setShowScanWarning] = useState(isNearLimit);
 
-  const getShareTitle = (index: number) => qardFileTitle(label, index);
+  const getShareTitle = (index: number) => qardFileTitle(exportLabel, index, setId);
 
   // Truncated SHA-256 fingerprint (premium) — read from the share's embedded
   // sha256 segment (computed at generation over the FULL hash input,
@@ -116,7 +127,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
             <div>
                 <h2 style="font-size: 20px; font-weight: 700; margin: 20px 0 8px 0; color: #231f20;">Qard #${index + 1}</h2>
 
-                ${label ? `<p style="font-size: 14px; color: #3e3739; margin: 0 0 6px 0;">Label: <b style="font-weight: 500;">${escapeHtml(label)}</b></p>` : ''}
+                ${exportLabel ? `<p style="font-size: 14px; color: #3e3739; margin: 0 0 6px 0;">Label: <b style="font-weight: 500;">${escapeHtml(exportLabel)}</b></p>` : ''}
 
                 <p style="font-size: 14px; color: #3e3739; margin: 0 0 6px 0;">Set: ${escapeHtml(setId)}  &middot;  ${createdDate}</p>
 
@@ -188,7 +199,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     renderQardToCanvas(qrDataUrl, {
       cardNumber: index + 1,
       setId,
-      label,
+      label: exportLabel,
       dateStr: new Date().toLocaleDateString('en-US'),
       fingerprint: getShareFingerprint(index),
       footerText: 'Scan with seQRets App to recover  \u2014  seqrets.app',
@@ -261,7 +272,8 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
         await document.fonts.ready;
         const zip = await buildQardsZip({
             shares,
-            label,
+            label: exportLabel,
+            setId,
             // Render each card on demand (no pre-generated cache on desktop).
             getPngDataUrl: (i) => (!isTextOnly && qrCodeUris[i] ? renderCardToCanvas(i, qrCodeUris[i]!, 4) : null),
             encryptedInstructions,
@@ -293,9 +305,11 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
   const getVaultJsonString = () => buildVaultJson(qrCodeData, keyfileUsed);
 
   const downloadVaultFile = async (content: string, isEncrypted: boolean) => {
-    const vaultLabel = qrCodeData.label || 'Untitled';
+    // Blind export: vault FILENAME must not leak the label (contents may be
+    // encrypted, the file name never is).
+    const vaultLabel = (exportLabel || (showLabelOnExports ? 'Untitled' : `seQRets-Vault-${setId}`));
     const sanitizedLabel = (vaultLabel).replace(/[^a-zA-Z0-9_-]/g, '-');
-    const filename = `${sanitizedLabel}-${new Date().toISOString().split('T')[0]}.seqrets`;
+    const filename = `${sanitizedLabel}.seqrets`;
     const savedPath = await saveTextFileNative(filename, SEQRETS_FILTERS, content);
     if (savedPath) {
       toast({
@@ -533,7 +547,8 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
                     onClick={() => {
                       setSmartCardMode('write-vault');
                       setSmartCardWriteData(getVaultJsonString());
-                      setSmartCardWriteLabel(qrCodeData.label || 'Vault');
+                      // Card listings show item labels without PIN — respect blind export.
+                      setSmartCardWriteLabel(exportLabel || `Vault-${setId}`);
                       setIsSmartCardOpen(true);
                     }}
                     className="w-full sm:w-auto"

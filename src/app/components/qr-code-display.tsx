@@ -17,10 +17,21 @@ import { Label } from '@/components/ui/label';
 interface QrCodeDisplayProps {
   qrCodeData: CreateSharesResult;
   keyfileUsed: boolean;
+  /**
+   * When false ("blind export"), the label is kept OFF every export surface —
+   * card face, print HTML and print-window title, PNG/TXT/ZIP file names, and
+   * the vault file name — so a card or file reveals nothing but a number and
+   * set ID. The encrypted copy inside the payload is unaffected. Defaults to
+   * true (label visible), matching historical behavior.
+   */
+  showLabelOnExports?: boolean;
 }
 
-export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
+export function QrCodeDisplay({ qrCodeData, keyfileUsed, showLabelOnExports = true }: QrCodeDisplayProps) {
   const { shares, totalShares, requiredShares, label, setId, isTextOnly: isTextOnlyHint, encryptedInstructions } = qrCodeData;
+  // Every export surface reads exportLabel; only the on-screen header (the
+  // user's own session) keeps showing the real label regardless.
+  const exportLabel = showLabelOnExports ? label : null;
   // Ground-truth check: if any actual share exceeds the QR capacity limit,
   // force text-only mode regardless of the pre-generation estimate (which
   // can be wrong due to stale closures in the worker message handler).
@@ -67,7 +78,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     return () => vaultWorkerRef.current?.terminate();
   }, []);
 
-  const getShareTitle = (index: number) => qardFileTitle(label, index);
+  const getShareTitle = (index: number) => qardFileTitle(exportLabel, index, setId);
 
   // The print window is opened as about:blank, so relative URLs don't resolve —
   // fonts must be referenced by absolute same-origin URL. Self-hosted (L2):
@@ -137,7 +148,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
                 <p style="font-size: 14px; color: #6b6567; margin: 0 0 10px 0;">Set: <b style="font-weight: 500;">${escapeHtml(setId)}</b></p>
 
                 <div style="font-size: 14px; color: #3e3739; line-height: 1.6; margin-bottom: 20px;">
-                    ${label ? `Label: <b style="font-weight: 500;">${escapeHtml(label)}</b><br/>` : ''}
+                    ${exportLabel ? `Label: <b style="font-weight: 500;">${escapeHtml(exportLabel)}</b><br/>` : ''}
                     Created: <b style="font-weight: 500;">${createdDate}</b>
                 </div>
 
@@ -201,7 +212,7 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     renderQardToCanvas(qrDataUrl, {
       cardNumber: index + 1,
       setId,
-      label,
+      label: exportLabel,
       dateStr: new Date().toLocaleDateString('en-US'),
       footerText: 'Scan QR with seQRets App to recover secret.',
       scale,
@@ -265,7 +276,8 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
     try {
         const zip = await buildQardsZip({
             shares,
-            label,
+            label: exportLabel,
+            setId,
             // Prefer the pre-rendered card image; fall back to the bare QR.
             getPngDataUrl: (i) => (!isTextOnly ? (cardDataUrls[i] || qrCodeUris[i]) : null),
             encryptedInstructions,
@@ -300,9 +312,11 @@ export function QrCodeDisplay({ qrCodeData, keyfileUsed }: QrCodeDisplayProps) {
   const getVaultJsonString = () => buildVaultJson(qrCodeData, keyfileUsed);
 
   const downloadVaultFile = (content: string, isEncrypted: boolean) => {
-    const vaultLabel = qrCodeData.label || 'Untitled';
+    // Blind export: vault FILENAME must not leak the label (contents may be
+    // encrypted, the file name never is).
+    const vaultLabel = (exportLabel || (showLabelOnExports ? 'Untitled' : `seQRets-Vault-${setId}`));
     const sanitizedLabel = (vaultLabel).replace(/[^a-zA-Z0-9_-]/g, '-');
-    const filename = `${sanitizedLabel}-${new Date().toISOString().split('T')[0]}.seqrets`;
+    const filename = `${sanitizedLabel}.seqrets`;
     const blob = new Blob([content], { type: 'application/json' });
     const href = URL.createObjectURL(blob);
     const link = document.createElement('a');

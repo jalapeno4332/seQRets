@@ -32,6 +32,47 @@ const MAX_SHARE_LENGTH = 262_144; // 256 KB
 // parse ceiling — a Qard we create today must be readable tomorrow.
 const MAX_COMPRESSED_PAYLOAD = 150_000;
 
+/**
+ * Share-format version written into every new share as a `v=` segment
+ * (first metadata segment, covered by the SHA-256 hash). Shares with no
+ * `v=` segment are legacy (pre-v1.14) and parse under the old rules.
+ * v=1 means: payload is zero-padded to PAYLOAD_PAD_BUCKET multiples.
+ */
+export const SHARE_FORMAT_VERSION = 1;
+
+/**
+ * XChaCha20-Poly1305 preserves plaintext length, and every Shamir share is
+ * full-ciphertext length — so without padding, a single Qard leaks the
+ * approximate size of the secret (a 12-word and a 24-word seed become
+ * distinguishable from one stolen card). Zero-padding the COMPRESSED payload
+ * up to multiples of this bucket hides that: an observer learns only
+ * "at most N buckets". 192 bytes puts every common seed-phrase payload
+ * (12/24 words, with or without label) in the same first bucket while
+ * keeping QR density comfortably inside limits.
+ *
+ * Why zeros, and why after gzip: padding must follow compression (gzip
+ * would collapse it), and both deployed decompressors tolerate trailing
+ * zeros after a gzip stream — pako skips trailing NUL bytes (zlib's
+ * documented tar-padding behavior; non-zero bytes would error) and Rust's
+ * flate2 GzDecoder never reads past the gzip footer at all. That makes
+ * padded payloads restorable by every already-shipped decoder, including
+ * recover.html copies stored with estate documents. Never change the
+ * padding byte from 0x00 without a new format version.
+ */
+export const PAYLOAD_PAD_BUCKET = 192;
+
+/** Zero-pad a compressed payload up to the next PAYLOAD_PAD_BUCKET multiple. */
+export function padPayload(compressed: Uint8Array): Uint8Array {
+    const target = Math.max(
+        PAYLOAD_PAD_BUCKET,
+        Math.ceil(compressed.length / PAYLOAD_PAD_BUCKET) * PAYLOAD_PAD_BUCKET,
+    );
+    if (target === compressed.length) return compressed;
+    const padded = new Uint8Array(target); // zero-filled by construction
+    padded.set(compressed);
+    return padded;
+}
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -207,7 +248,7 @@ export function computeShareHash(input: string): string {
  * matching hash).
  *
  *   "seQRets|salt|data"                       → "seQRets|salt|data|sha256:H"
- *   "seQRets|salt|data|t=3|n=5|i=2"           → "seQRets|salt|data|t=3|n=5|i=2|sha256:H"
+ *   "seQRets|salt|data|v=1|t=3|n=5|i=2"       → "seQRets|salt|data|v=1|t=3|n=5|i=2|sha256:H"
  *
  * Putting the hash last means manual verification is trivial:
  *   echo -n "<everything before |sha256:>" | shasum -a 256
@@ -229,16 +270,22 @@ export function truncateHash(fullHex: string): string {
  * Parse a share string in any supported shape:
  *   • 3 segments (legacy, no hash):                  seQRets|salt|data
  *   • 4 segments (hash, no meta):                    seQRets|salt|data|sha256:H
- *   • 4+ segments (current layout, hash last):       seQRets|salt|data|t=K|n=N|i=I|sha256:H
+ *   • 4+ segments (v1.14+ current, hash last):       seQRets|salt|data|v=1|t=K|n=N|i=I|sha256:H
+ *   • 4+ segments (pre-v1.14, no version):           seQRets|salt|data|t=K|n=N|i=I|sha256:H
  *   • 4+ segments (legacy v1.11.0, hash before meta): seQRets|salt|data|sha256:H|t=K|n=N|i=I
  *
  * The hash, when present, lives in the `sha256:` segment which can sit
  * at index 3 (legacy) or at the last index (current). Everything else
  * past index 2 is optional metadata of the form "key=value".
  *
+ * The `v=` segment, when present, is the share-format version (see
+ * SHARE_FORMAT_VERSION). Absent = legacy rules. A version above the
+ * current one throws a clear "update your software" error — that beats
+ * a silent misparse on a frozen artifact like a steel plate.
+ *
  * The hash covers seQRets|salt|data + the meta segments (in their
- * serialized order, with the sha256 segment removed). Both layouts
- * produce the same hash input, so a Qard generated under either layout
+ * serialized order, with the sha256 segment removed). All layouts
+ * produce the same hash input, so a Qard generated under any layout
  * verifies correctly here.
  */
 export function parseShare(shareString: string): ParsedShare {
@@ -252,13 +299,14 @@ export function parseShare(shareString: string): ParsedShare {
         throw new Error('Invalid or corrupted share format.');
     }
 
-    const base: Pick<ParsedShare, 'threshold' | 'total' | 'index'> = {
+    const base: Pick<ParsedShare, 'threshold' | 'total' | 'index' | 'version'> = {
         threshold: null,
         total: null,
         index: null,
+        version: null,
     };
 
-    // Legacy 3-segment, no hash.
+    // Legacy 3-segment, no hash (and no version — predates the marker).
     if (parts.length === 3) {
         return {
             coreString: shareString,
@@ -305,6 +353,15 @@ export function parseShare(shareString: string): ParsedShare {
         if (key === 't') meta.threshold = n;
         else if (key === 'n') meta.total = n;
         else if (key === 'i') meta.index = n;
+        else if (key === 'v') meta.version = n;
+    }
+
+    // A Qard from a future format generation must fail LOUDLY and clearly —
+    // never silently misparse. This is the whole point of the version marker:
+    // an executor decades from now can distinguish "the backup is damaged"
+    // (hash mismatch) from "the software is too old" (this error).
+    if (meta.version !== null && meta.version > SHARE_FORMAT_VERSION) {
+        throw new Error('This Qard was created by a newer version of seQRets. Please update the app — or use the latest recover.html from github.com/seQRets/seQRets-Recover — and try again.');
     }
 
     // The app always writes t/n/i together and internally consistent (t ≤ n,
@@ -380,6 +437,11 @@ export async function createShares(request: CreateSharesRequest): Promise<Create
             throw new Error('This secret is too large. Please shorten it, or split it into separate smaller secrets.');
         }
 
+        // Length privacy (v=1): zero-pad to PAYLOAD_PAD_BUCKET multiples so a
+        // single Qard's size doesn't reveal the secret's size. See the bucket
+        // constant's doc comment for why zeros and why after gzip.
+        compressedPayload = padPayload(compressedPayload);
+
         const salt = randomBytes(SALT_LENGTH);
         passwordDerivedKey = await deriveKey(password, salt, keyfileBytes);
 
@@ -399,7 +461,10 @@ export async function createShares(request: CreateSharesRequest): Promise<Create
         const saltBase64 = Buffer.from(salt).toString('base64');
         const formattedShares = encryptedShares.map((shareData, idx) => {
             const shareDataBase64 = Buffer.from(shareData).toString('base64');
-            let core = `seQRets|${saltBase64}|${shareDataBase64}`;
+            // v= is always the FIRST metadata segment, hash-covered like the
+            // rest. Old parsers ignore unknown key=value segments (and still
+            // hash them correctly), so v=1 shares restore in older software.
+            let core = `seQRets|${saltBase64}|${shareDataBase64}|v=${SHARE_FORMAT_VERSION}`;
             if (embedRecoveryInfo) {
                 // 1-based index so it matches the visual "Qard #N" labelling.
                 core += `|t=${requiredShares}|n=${totalShares}|i=${idx + 1}`;
@@ -519,6 +584,12 @@ export async function restoreSecret(request: RestoreSecretRequest): Promise<Rest
                 : 'Authentication failed. Please check your password, keyfile, and QR codes.');
         }
 
+        // v=1 payloads carry trailing zero-padding after the gzip stream
+        // (length privacy — see PAYLOAD_PAD_BUCKET). No explicit unpad step:
+        // pako skips trailing NUL bytes after the stream ends (zlib's
+        // tar-padding tolerance), which is also why pre-v1.14 apps and old
+        // recover.html copies restore padded Qards unchanged. Guarded by the
+        // padded-payload cases in the A/B verification script.
         decompressedBytes = ungzip(decryptedBytes);
         const decodedString = textDecoder.decode(decompressedBytes);
 

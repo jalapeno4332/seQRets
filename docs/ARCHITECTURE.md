@@ -10,13 +10,14 @@ All cryptographic operations in seQRets run **entirely on your device**. Your se
 
 1. **Detect** — if your secret is a BIP-39 seed phrase, it is converted to compact binary entropy (e.g., 24 words → 32 bytes) before processing; Trezor-style SLIP-39 recovery shares are recognized and checksum-validated (a mistyped word is caught here), then kept as plain text
 2. **Compress** — gzip (level 9) reduces the payload size to minimize QR code density
-3. **Derive key** — your password + optional keyfile are run through Argon2id (64MB memory, 4 iterations) to produce a 256-bit encryption key
-4. **Encrypt** — XChaCha20-Poly1305 encrypts the compressed data using a randomly generated 128-bit salt and 192-bit nonce
-5. **Split** — Shamir's Secret Sharing divides the ciphertext into N shares with a threshold of T (e.g., 2-of-3)
-6. **Output** — each share is encoded as a QR code (Qard); a Qard is computationally indistinguishable from random noise without the others
+3. **Pad** — the compressed payload is zero-padded to 192-byte buckets so the encrypted output's size doesn't reveal the secret's size (see [Length Privacy](#length-privacy-payload-padding))
+4. **Derive key** — your password + optional keyfile are run through Argon2id (64MB memory, 4 iterations) to produce a 256-bit encryption key
+5. **Encrypt** — XChaCha20-Poly1305 encrypts the padded data using a randomly generated 128-bit salt and 192-bit nonce
+6. **Split** — Shamir's Secret Sharing divides the ciphertext into N shares with a threshold of T (e.g., 2-of-3)
+7. **Output** — each share is encoded as a QR code (Qard) carrying a `v=1` format-version marker; a Qard is computationally indistinguishable from random noise without the others
 
 ```
-Secret → [BIP-39 optimize] → Compress → Argon2id → Encrypt → Shamir Split → Qards
+Secret → [BIP-39 optimize] → Compress → Pad (192B buckets) → Argon2id → Encrypt → Shamir Split → Qards
 ```
 
 ### 🔓 Restoring a Secret
@@ -141,6 +142,14 @@ No `Math.random()` or any other weak PRNG is used for any security-critical oper
 
 Seed phrases are automatically detected and converted to compact binary entropy before encryption. A 24-word phrase (~150 characters) becomes just 32 bytes, dramatically reducing QR code size.
 
+## Length Privacy (Payload Padding)
+
+Encryption hides *what* data says, not *how much* of it there is: XChaCha20-Poly1305 is length-preserving, and every Shamir share is full-ciphertext length. Without countermeasures, a single Qard would reveal the approximate size of the secret — enough to distinguish a 12-word from a 24-word seed phrase, or a seed from a letter to heirs.
+
+Since v1.14, the compressed payload is zero-padded up to multiples of **192 bytes** before encryption. Every common secret (12/24-word seeds, with or without a label) lands in the same first bucket, so an observer holding a Qard learns only "at most N buckets" — for typical secrets, nothing at all. The padding is applied after compression (compression would collapse it), covered by the authentication tag, and removed implicitly on restore: gzip streams are self-terminating and both deployed decompressors ignore trailing zero bytes, which is also why **pre-v1.14 apps and old `recover.html` copies restore padded Qards without modification**.
+
+Every v1.14+ Qard also carries a `v=1` **format-version marker**, hash-covered like the rest of the metadata. Its purpose is longevity: Qards are frozen artifacts (printed cards, steel plates), and a version marker lets future software distinguish "this backup is damaged" (checksum mismatch) from "this software predates this Qard's format" (a clear update-your-app error). Shares without a `v=` segment are pre-v1.14 and parse under the original rules; padding applies to Qard share payloads only (vault and plan files are updatable disk artifacts).
+
 ## SLIP-39 Detection
 
 Trezor-style SLIP-39 recovery shares (20 or 33 words, including multi-share sets entered one per line) are recognized on entry and validated against their built-in RS1024 checksum — any single mistyped word is caught before encryption, and the checksum is verified again after restore. Unlike BIP-39, SLIP-39 phrases are **stored as plain text** rather than converted to entropy: each share carries metadata (identifier, group parameters, iteration exponent) that must be reproduced exactly, and gzip already compresses share sets efficiently, so conversion would add share-format risk for negligible size benefit. The detection module ([`slip39.ts`](../packages/crypto/src/slip39.ts)) is validation-only — it embeds the official 1024-word wordlist verbatim, adds zero dependencies, is verified against all 45 official SatoshiLabs test vectors, and never splits, combines, or otherwise handles key material. No SeedQR is offered for SLIP-39 (SeedQR is a BIP-39-only format); restored shares display as a numbered word grid for typing into a hardware wallet.
@@ -246,6 +255,10 @@ Good keyfile storage patterns map to the threat you care about most:
 - **Coercion defense** → keyfile in a bank safe deposit box, a trusted third party in another jurisdiction, or a smart card stored physically separate from the user
 - **Password-compromise defense** → keyfile on a smart card or hardware token kept on the user's person, password memorized or in a password manager
 - **Inheritance use case** → keyfile distributed as one of the Qards' physical artifacts (e.g., smart card at the attorney's office alongside the sealed instructions)
+
+## Label Visibility
+
+The optional label is stored **encrypted** inside the payload and reappears on restore. By default it is *also* printed in plain text on each Qard's face and used in PNG/TXT/ZIP/vault file names — convenient for sorting, but readable by anyone who handles a card or file (including a printing/etching service). The **"Show label on Qards & file names"** switch in the create flow turns this off ("blind export"): card faces show only the card number and set ID, files are named `seQRets-Qard-NN`, and on desktop, smart-card item labels are generic. The in-app help warns users not to put amounts, exchange names, or other sensitive hints in a label they intend to print.
 
 ## Review Reminder Sidecar
 
