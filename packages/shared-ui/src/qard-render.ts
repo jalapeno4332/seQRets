@@ -93,6 +93,24 @@ export interface QardCardOptions {
 }
 
 /**
+ * Draw `text` horizontally centred on `W` without relying on the canvas's own
+ * `textAlign = 'center'`.
+ *
+ * WebKit (and therefore the Tauri desktop app's WKWebView) mis-centres strings
+ * containing multi-codepoint emoji graphemes — a skin-tone modifier such as
+ * U+1F4AA U+1F3FB collapses the centring offset toward zero, so the line starts
+ * at the centreline and runs off to the right. Measuring explicitly and drawing
+ * left-aligned sidesteps that path; it's the same technique the warning line
+ * below already uses, which is why the ⚠️ line centres correctly today.
+ */
+function fillCentered(ctx: CanvasRenderingContext2D, text: string, W: number, y: number) {
+  const prevAlign = ctx.textAlign;
+  ctx.textAlign = 'left';
+  ctx.fillText(text, (W - ctx.measureText(text).width) / 2, y);
+  ctx.textAlign = prevAlign;
+}
+
+/**
  * Pure Canvas 2D renderer for the Qard card layout.
  * Draws the full "Secret Qard Backup" card programmatically without
  * html2canvas, ensuring reliable cross-browser support (including Safari).
@@ -176,7 +194,8 @@ export function renderQardToCanvas(qrDataUrl: string, opts: QardCardOptions): Pr
         if (label) {
           ctx.fillStyle = '#3e3739';
           ctx.font = '14px Inter, system-ui, -apple-system, sans-serif';
-          ctx.fillText(`Label: ${label}`, W / 2, y);
+          // Labels are user-authored and may contain emoji — see fillCentered.
+          fillCentered(ctx, `Label: ${label}`, W, y);
           y += 24;
         }
 
@@ -199,7 +218,8 @@ export function renderQardToCanvas(qrDataUrl: string, opts: QardCardOptions): Pr
         ctx.fillStyle = '#3e3739';
         ctx.font = '14px Inter, system-ui, -apple-system, sans-serif';
         if (label) {
-          ctx.fillText(`Label: ${label}`, W / 2, y);
+          // Labels are user-authored and may contain emoji — see fillCentered.
+          fillCentered(ctx, `Label: ${label}`, W, y);
           y += 22;
         }
 
