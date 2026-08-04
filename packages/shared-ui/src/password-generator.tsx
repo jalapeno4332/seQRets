@@ -49,8 +49,13 @@ export function PasswordGenerator({ value, onValueChange, onValidationChange, pl
     const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
     const charset = lower + upper + digits + special;
     const passwordLength = 32;
+    // Two independent draws: one picks the characters, the other drives the
+    // shuffle. Reusing a single array for both would make a character's
+    // identity and its final position deterministically linked.
     const randomValues = new Uint32Array(passwordLength);
+    const shuffleValues = new Uint32Array(passwordLength);
     window.crypto.getRandomValues(randomValues);
+    window.crypto.getRandomValues(shuffleValues);
 
     // Guarantee at least one character from each required class
     const mandatory = [
@@ -67,7 +72,7 @@ export function PasswordGenerator({ value, onValueChange, onValidationChange, pl
 
     // Fisher-Yates shuffle so mandatory chars aren't always at the start
     for (let i = mandatory.length - 1; i > 0; i--) {
-      const j = randomValues[i] % (i + 1);
+      const j = shuffleValues[i] % (i + 1);
       [mandatory[i], mandatory[j]] = [mandatory[j], mandatory[i]];
     }
 

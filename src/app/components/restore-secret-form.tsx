@@ -191,7 +191,10 @@ export function RestoreSecretForm() {
       return;
     }
     const meta = success && data ? parseShareMeta(data) : { setId: null, threshold: null, total: null, index: null, hashValid: null };
-    const newShare: DecodedShare = { id: `${Date.now()}-${Math.random()}`, data, fileName, success, ...meta };
+    // React list key / removal handle only — no security role. Uses randomUUID
+    // (as the inheritance-plan forms already do) rather than Math.random so a
+    // grep of this repo turns up no weak-PRNG calls to misread.
+    const newShare: DecodedShare = { id: crypto.randomUUID(), data, fileName, success, ...meta };
     setDecodedShares(prev => [...prev, newShare]);
 
     if (success) {
