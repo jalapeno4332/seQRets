@@ -69,7 +69,7 @@
   "overrides": {
     "qs": "^6.14.1",
     "fast-xml-parser": "5.3.4",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "postcss": "^8.5.23",
     "sharp": "^0.35.3"
   }
