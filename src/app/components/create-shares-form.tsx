@@ -339,10 +339,34 @@ export function CreateSharesForm() {
                           Enter the secret you want to protect. This could be a 12/24-word BIP-39 seed phrase, a 20-word Trezor-style (SLIP-39) backup, a private key, or any other important text. The app will automatically detect valid seed phrases and check them for typos.
                       </HelpHint>
                   </div>
-                  <Button onClick={() => setShowSeedGenerator(!showSeedGenerator)} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
-                      <Wand className="mr-2 h-4 w-4" />
-                      {showSeedGenerator ? 'Hide Generator' : 'Generate Seed Phrase'}
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <HelpHint label="Help: how generated phrases get their randomness" align="end" contentClassName="text-sm w-80 max-w-[calc(100vw-2rem)] max-h-80 overflow-y-auto overscroll-contain">
+                        <p className="font-semibold">Where the randomness comes from</p>
+                        <p className="mt-2">
+                            Generated phrases are built from randomness supplied by your operating system&apos;s
+                            own cryptographic generator &mdash; the same source that secures HTTPS. 12 words
+                            draws the full 128 bits, 24 words the full 256. Nothing is derived from the clock,
+                            a counter, or a smaller seed that is then stretched.
+                        </p>
+                        <p className="mt-2">
+                            If the system cannot supply real randomness, generation fails with an error rather
+                            than quietly falling back to something weaker. That silent fallback is the flaw
+                            behind every major weak-entropy wallet loss &mdash; it shrinks the search space to
+                            something an attacker can exhaust, and the phrase looks completely normal the
+                            whole time.
+                        </p>
+                        <p className="mt-2">
+                            Generation happens entirely on this device and nothing is transmitted; the code is
+                            open source under AGPLv3 if you want to read it. You never have to use this
+                            generator &mdash; a phrase made on a hardware wallet or with dice can be pasted
+                            straight in.
+                        </p>
+                    </HelpHint>
+                    <Button onClick={() => setShowSeedGenerator(!showSeedGenerator)} className="bg-primary text-primary-foreground hover:bg-primary/80 hover:shadow-md">
+                        <Wand className="mr-2 h-4 w-4" />
+                        {showSeedGenerator ? 'Hide Generator' : 'Generate Seed Phrase'}
+                    </Button>
+                  </div>
                 </div>
                 {showSeedGenerator && (
                   <div className="p-4 border rounded-lg bg-muted/50 my-2">

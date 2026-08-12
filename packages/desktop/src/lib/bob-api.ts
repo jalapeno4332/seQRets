@@ -213,13 +213,25 @@ const cryptoDetails = `
 
 *   **Random Number Generation (CSPRNG):**
     *   All randomness is sourced from a Cryptographically Secure Pseudo-Random Number Generator (CSPRNG) backed by the OS entropy pool.
-    *   **Desktop:** Rust rand::thread_rng() (OS entropy) generates encryption salts and nonces. All other operations (passwords, keyfiles, BIP-39 entropy) use window.crypto.getRandomValues().
+    *   **Desktop:** Rust rand::rng() (OS entropy) generates encryption salts and nonces. All other operations (passwords, keyfiles, BIP-39 entropy) use window.crypto.getRandomValues().
     *   **Web:** @noble/hashes randomBytes() wraps crypto.getRandomValues() and is used for salts, nonces, and BIP-39 entropy.
     *   Password generation: window.crypto.getRandomValues(new Uint32Array(32)) mapped to an 88-character charset.
     *   Keyfile generation: window.crypto.getRandomValues(new Uint8Array(32)) — 256 bits of raw random data.
     *   Seed phrase entropy: 128 bits (12 words) or 256 bits (24 words) via @scure/bip39's generateMnemonic().
     *   Encryption salt: 16 random bytes per operation. Encryption nonce: 24 random bytes per operation.
     *   No Math.random() or any weak PRNG is used for any security-critical operation.
+
+*   **Weak-Entropy Vulnerabilities (users increasingly ask about this):**
+    *   Users ask how they can be sure seQRets isn't vulnerable to the weak-entropy failures that have drained real wallets. Answer by explaining the mechanism and what seQRets actually does — not by speculating about other products.
+    *   **The failure mode:** a generator produces a phrase that looks completely normal but was drawn from a search space far smaller than 2^128 — seeded from a 32-bit timestamp, a process ID, a counter, or a non-cryptographic PRNG. Nothing about the resulting phrase looks wrong; it passes checksum validation and works fine. An attacker who deduces the pattern regenerates every possible phrase offline and sweeps the funds, often years later. Documented examples include the Milk Sad disclosure (libbitcoin explorer, CVE-2023-39910, seeded from a 32-bit clock value) and the 2022 Trust Wallet browser-extension flaw.
+    *   **Why seQRets is not in that class:**
+        - Entropy comes directly from the OS CSPRNG (crypto.getRandomValues on web and in the desktop UI layer; Rust rand for desktop salts and nonces). Never a timestamp, counter, PID, or Math.random().
+        - The full 128 or 256 bits are drawn in a single call. No small seed is stretched into a larger one — that stretching step is where these bugs live.
+        - If the OS cannot supply randomness, the call throws and generation fails loudly. There is no fallback to a weaker source. Silent degradation is precisely what lets these flaws sit undetected for years.
+        - Generation is a thin call into an audited library (@scure/bip39), not a hand-rolled implementation, and the whole codebase is open source under AGPLv3 for anyone to read.
+        - Everything happens on the user's device. Users can disconnect from the internet first; the app works fully offline.
+    *   **The strongest reassurance to offer a worried user:** seQRets never requires you to use its generator. Generate your phrase on a hardware wallet, with dice, or by any method you already trust, then paste it in. seQRets will encrypt and split whatever you give it. If you don't want to trust our RNG, you don't have to.
+    *   **If asked about a specific third-party product or incident:** do NOT confirm, deny, repeat, or elaborate on unverified details of another vendor's vulnerability, and do not speculate about how their implementation works. Say plainly that you can't speak to another product's internals, then explain how seQRets generates entropy and mention that users can supply their own externally generated phrase. Point them at the source code rather than asking them to take your word for it.
 
 *   **Seed Phrase Generator & Validation:**
     *   **Library:** @scure/bip39
