@@ -26,6 +26,17 @@ import { HelpHint } from '@/components/ui/help-hint';
 import { Separator } from '@/components/ui/separator';
 import { playQardDropSound } from '@/lib/play-sound';
 
+// Stable id for a decoded-share row. No security role, but kept on a CSPRNG so a
+// grep of this repo turns up no weak-PRNG calls to misread. crypto.randomUUID is
+// secure-context-only — undefined over plain-HTTP LAN dev (next.config
+// allowedDevOrigins) — so fall back to getRandomValues, which has no such gate.
+function newShareId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const buf = new Uint32Array(4);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => n.toString(16).padStart(8, '0')).join('');
+}
+
 interface DecodedShare {
     id: string; // Use a unique ID for each share for stable rendering and removal
     data: string;
@@ -191,10 +202,8 @@ export function RestoreSecretForm() {
       return;
     }
     const meta = success && data ? parseShareMeta(data) : { setId: null, threshold: null, total: null, index: null, hashValid: null };
-    // React list key / removal handle only — no security role. Uses randomUUID
-    // (as the inheritance-plan forms already do) rather than Math.random so a
-    // grep of this repo turns up no weak-PRNG calls to misread.
-    const newShare: DecodedShare = { id: crypto.randomUUID(), data, fileName, success, ...meta };
+    // id is a React list key / removal handle only — no security role. See newShareId.
+    const newShare: DecodedShare = { id: newShareId(), data, fileName, success, ...meta };
     setDecodedShares(prev => [...prev, newShare]);
 
     if (success) {
