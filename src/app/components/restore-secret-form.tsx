@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react';
 import { copyWithAutoClear } from '@/lib/clipboard-utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -636,7 +636,17 @@ export function RestoreSecretForm() {
                     {isSecretVisible && revealWordGroups.map((words, si) => (
                       <div key={si} className="rounded-md border p-4 text-left">
                         {revealWordGroups.length > 1 && <p className="text-xs font-semibold mb-2">{revealGroupLabel} {si + 1}</p>}
-                        <ol className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-sm font-mono">
+                        {/* Column-major flow: words run top-to-bottom within a
+                            column (1,2,3 then 4,5,6...) rather than across rows.
+                            Row count is derived from the word count at each
+                            breakpoint so the column count stays 2 / 4 as before. */}
+                        <ol
+                          className="grid grid-flow-col grid-rows-[repeat(var(--seed-rows-narrow),auto)] sm:grid-rows-[repeat(var(--seed-rows-wide),auto)] gap-x-4 gap-y-1 text-sm font-mono"
+                          style={{
+                            '--seed-rows-narrow': Math.ceil(words.length / 2),
+                            '--seed-rows-wide': Math.ceil(words.length / 4),
+                          } as CSSProperties}
+                        >
                           {words.map((w, wi) => (
                             <li key={wi} className="flex gap-1.5">
                               <span className="text-muted-foreground w-6 text-right select-none">{wi + 1}.</span>
