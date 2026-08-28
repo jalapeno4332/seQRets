@@ -243,6 +243,8 @@ const cryptoDetails = `
 *   **Seed Phrase Generator & Validation:**
     *   **Library:** @scure/bip39
     *   Generates 12-word (128-bit) or 24-word (256-bit) mnemonic phrases based on the BIP-39 standard.
+    *   The generator is a small self-contained tool (v1.15+): after generating, it shows the phrase (blurred until revealed), its BIP-32 master fingerprint, and — via the QR icon in the corner of the phrase box (alongside eye and copy) — a SeedQR of the phrase, switchable between Standard (word-index digits) and Compact (raw entropy bytes) formats. The QR starts blurred with its own reveal toggle. Users can generate a seed here and scan it straight into a SeedQR-compatible hardware signer without ever using the rest of the app.
+    *   The displayed fingerprint is computed with an empty BIP-39 passphrase; it should match what a hardware wallet shows after importing the seed (adding a passphrase at import time changes it). This closes the loop: generate → scan → verify the fingerprint on-device to confirm the scan landed intact.
     *   Seed phrases are automatically detected and converted to compact binary entropy before encryption (BIP-39 optimization).
     *   SLIP-39 recovery shares (Trezor-style, 20/33 words) are detected and RS1024-checksum-validated on entry and after restoration; they are stored as plain text (no compression).
 
