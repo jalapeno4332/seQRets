@@ -35,9 +35,17 @@ let doc: jsPDF;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-/** Check if a table row has meaningful user-entered data beyond default labels. */
-function rowHasData(cells: string[], skipColumns = 1): boolean {
-  return cells.some((cell, i) => i >= skipColumns && cell.trim().length > 0);
+/**
+ * Check if a table row has meaningful user-entered data. `ignoreCols` lists
+ * the column indices whose content is app-prefilled (row numbers, default
+ * role labels) and therefore doesn't count as data. Explicit indices — the
+ * old positional `skipColumns` treated a beneficiary's NAME as a default
+ * label and silently dropped name-only rows from the printed plan. It was
+ * also passed as an Array.some() callback, which fed the row INDEX in as
+ * the skip count.
+ */
+function rowHasData(cells: string[], ignoreCols: number[] = []): boolean {
+  return cells.some((cell, i) => !ignoreCols.includes(i) && cell.trim().length > 0);
 }
 
 function addFooter() {
@@ -50,10 +58,20 @@ function addFooter() {
 
 function checkPageBreak(neededHeight: number) {
   if (currentY + neededHeight > PAGE_H - MARGIN_B) {
+    // addFooter() switches to the footer's small/muted style. Breaks fire
+    // mid-block (inside addTextBlock/addTable loops), so restore the
+    // caller's font state afterwards or every block that spans a page
+    // boundary continues in 8pt gray on the new page.
+    const size = doc.getFontSize();
+    const font = doc.getFont();
+    const color = doc.getTextColor();
     addFooter();
     doc.addPage();
     pageNumber++;
     currentY = MARGIN_T;
+    doc.setFontSize(size);
+    doc.setFont(font.fontName, font.fontStyle);
+    doc.setTextColor(color);
   }
 }
 
@@ -102,9 +120,9 @@ function addTextBlock(text: string) {
   }
 }
 
-function addTable(headers: string[], rows: string[][], colWidths: number[], skipColumns = 1) {
+function addTable(headers: string[], rows: string[][], colWidths: number[], ignoreCols: number[] = []) {
   // Filter out rows that have no meaningful data
-  const filteredRows = rows.filter(r => rowHasData(r, skipColumns));
+  const filteredRows = rows.filter(r => rowHasData(r, ignoreCols));
   if (filteredRows.length === 0) return;
 
   const rowHeight = 6;
@@ -232,8 +250,25 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
   if (plan.planInfo.dateCreated) infoLines.push(`Created: ${plan.planInfo.dateCreated}`);
   if (plan.planInfo.lastUpdated) infoLines.push(`Last updated: ${plan.planInfo.lastUpdated}`);
   if (plan.planInfo.reviewSchedule) infoLines.push(`Review schedule: ${plan.planInfo.reviewSchedule}`);
-  doc.text(infoLines.join('   |   '), PAGE_W / 2, currentY, { align: 'center' });
-  currentY += 10;
+  // With every field filled the joined line is wider than the page.
+  // Wrap at the segment separators (never mid-label): greedily pack whole
+  // segments into lines that fit the content width, centring each line.
+  const SEP = '   |   ';
+  const packedInfo: string[] = [];
+  for (const segment of infoLines) {
+    const tail = packedInfo[packedInfo.length - 1];
+    const candidate = tail ? tail + SEP + segment : segment;
+    if (tail && doc.getTextWidth(candidate) <= CONTENT_W) {
+      packedInfo[packedInfo.length - 1] = candidate;
+    } else {
+      packedInfo.push(segment);
+    }
+  }
+  for (const line of packedInfo) {
+    doc.text(line, PAGE_W / 2, currentY, { align: 'center' });
+    currentY += 5;
+  }
+  currentY += 5;
 
   // ── Confidentiality notice ──
   doc.setFontSize(SMALL_SIZE);
@@ -295,12 +330,13 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
 
   // ── Beneficiaries ──
   const beneficiaryRows = (plan.beneficiaries ?? []).map(b => [b.name, b.relationship, b.contactInfo, b.assignedAssets]);
-  if (beneficiaryRows.some(rowHasData) || plan.distributionInstructions?.trim()) {
+  if (beneficiaryRows.some(r => rowHasData(r)) || plan.distributionInstructions?.trim()) {
     addSectionHeader(`${sectionNum++}. Beneficiaries`);
     addTable(
       ['Name', 'Relationship', 'Contact Info', 'Assigned Assets'],
       beneficiaryRows,
       [35, 30, 45, 65],
+      [], // every column, the name included, is user-entered data
     );
     if (plan.distributionInstructions?.trim()) {
       addLabelValue('Distribution Instructions', plan.distributionInstructions);
@@ -332,8 +368,14 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
       doc.text(secretTitle, MARGIN_L + 2, currentY);
       currentY += 6;
 
-      // Credentials
-      addLabelValue('Password', s.password);
+      // Credentials — label honestly: a hint typed verbatim as a password
+      // fails with an error indistinguishable from a wrong password.
+      addLabelValue(s.passwordIsHint ? 'Password HINT (not the actual password)' : 'Password', s.password);
+      if (s.keyfileUsed === 'yes' || s.keyfileUsed === 'no') {
+        addLabelValue('Keyfile Used', s.keyfileUsed === 'yes'
+          ? 'YES — decryption will fail without it, even with the correct password'
+          : 'No — only the password (and Qards) are needed');
+      }
       addLabelValue('Keyfile Primary', s.keyfilePrimaryLocation);
       addLabelValue('Keyfile Backup', s.keyfileBackupLocation);
 
@@ -351,11 +393,12 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
       }
 
       const qardRows = (s.qardLocations ?? []).map(q => [String(q.qardNumber), q.location, q.heldBy, q.accessNotes]);
-      if (qardRows.some(rowHasData)) {
+      if (qardRows.some(r => rowHasData(r, [0]))) {
         addTable(
           ['#', 'Location', 'Held By', 'Access Notes'],
           qardRows,
-          [10, 55, 45, 65]
+          [10, 55, 45, 65],
+          [0], // the Qard number is prefilled
         );
       }
 
@@ -378,23 +421,24 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
 
   // ── Device & Account Access ──
   const deviceRows = (plan.deviceAccounts ?? []).map(d => [d.label, d.type, d.location, d.username, d.password, d.notes]);
-  if (deviceRows.some(r => rowHasData(r, 2))) {
+  if (deviceRows.some(r => rowHasData(r, [1]))) {
     addSectionHeader(`${sectionNum++}. Device & Account Access`);
-    // 2FA deadlock warning
+    // 2FA deadlock warning. Plain text on purpose: U+26A0 (warning sign)
+    // is not in the standard Helvetica encoding and forces jsPDF into a
+    // UTF-16 fallback that renders as garbage glyphs.
     doc.setFontSize(SMALL_SIZE);
     doc.setFont('helvetica', 'bolditalic');
     doc.setTextColor(180, 140, 50);
-    checkPageBreak(10);
-    doc.text(
-      '\u26A0 2FA DEADLOCK WARNING: If your password manager requires a 2FA code and your 2FA app login is inside that password manager, neither can be opened first. Make sure your 2FA app recovery credentials are listed separately below.',
-      MARGIN_L + 2, currentY, { maxWidth: CONTENT_W - 4 }
-    );
-    currentY += 12;
+    const deadlockWarning = '2FA DEADLOCK WARNING: If your password manager requires a 2FA code and your 2FA app login is inside that password manager, neither can be opened first. Make sure your 2FA app recovery credentials are listed separately below.';
+    const deadlockLines = doc.splitTextToSize(deadlockWarning, CONTENT_W - 4) as string[];
+    checkPageBreak(deadlockLines.length * 3.5 + 4);
+    doc.text(deadlockLines, MARGIN_L + 2, currentY);
+    currentY += deadlockLines.length * 3.5 + 4;
     addTable(
       ['Device', 'Type', 'Location', 'Username', 'Password', 'Notes'],
       deviceRows,
       [30, 28, 30, 28, 28, 31],
-      2
+      [1], // only the Type column is prefilled; a label alone is real data
     );
   }
 
@@ -402,6 +446,14 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
   const assets = (plan.digitalAssets ?? []).filter(a => a.name || a.platform);
   if (assets.length > 0) {
     addSectionHeader(`${sectionNum++}. Digital Asset Inventory`);
+    doc.setFontSize(SMALL_SIZE);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(...MUTED_COLOR);
+    const custodialNote = 'Note for custodial platforms (exchanges, hosted accounts): most have a formal inheritance process requiring a death certificate. Use that legal path first \u2014 logging into a deceased person\u2019s account can violate the platform\u2019s terms or local law, and identity checks may freeze the account mid-withdrawal.';
+    const custodialLines = doc.splitTextToSize(custodialNote, CONTENT_W - 4) as string[];
+    checkPageBreak(custodialLines.length * 3.5 + 4);
+    doc.text(custodialLines, MARGIN_L + 2, currentY);
+    currentY += custodialLines.length * 3.5 + 4;
     for (const asset of assets) {
       checkPageBreak(30);
       doc.setFontSize(BODY_SIZE);
@@ -418,6 +470,15 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
       addLabelValue('Approx. Value', asset.approxValue);
       addLabelValue('2FA Method', asset.twoFactorMethod);
       addLabelValue('Recovery Seed', asset.recoverySeed);
+      addLabelValue('Wallet Kind', asset.walletKind);
+      if (asset.usesPassphrase === 'yes' || asset.usesPassphrase === 'no') {
+        addLabelValue('Added Passphrase ("25th word")', asset.usesPassphrase === 'yes'
+          ? 'YES \u2014 the seed alone opens an EMPTY wallet; the passphrase is also required'
+          : 'No \u2014 the seed phrase alone is sufficient');
+      }
+      addLabelValue('Derivation Path / Script Type', asset.derivationPath);
+      addLabelValue('Multisig Descriptor Location', asset.multisigDescriptorLocation);
+      addLabelValue('Multisig Cosigners', asset.multisigCosigners);
       if (asset.specialInstructions) {
         addLabelValue('Instructions', asset.specialInstructions);
       }
@@ -431,6 +492,65 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
     }
   }
 
+  // ── Appendix: Recreating the Wallets ──
+  // Written for an heir who has never heard the word "multisig". The plan
+  // gets them to a recovered seed phrase; this section gets them from the
+  // seed phrase to the actual funds — the step most inheritance documents
+  // silently skip, and where most self-custody inheritance losses happen.
+  if (assets.length > 0) {
+    addSectionHeader(`${sectionNum++}. Recreating the Wallets \u2014 Read Before Moving Any Funds`);
+
+    const sub = (title: string) => {
+      checkPageBreak(10);
+      doc.setFontSize(BODY_SIZE);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...PRIMARY_COLOR);
+      doc.text(title, MARGIN_L + 2, currentY);
+      currentY += 5;
+    };
+
+    addTextBlock(
+      'A recovered seed phrase is not money you can spend yet \u2014 it is the master key to a wallet. To reach the funds, the wallet has to be recreated in wallet software using that key. Take your time: nothing about a wallet expires in a day, and the most expensive mistakes happen when people rush this step.'
+    );
+    currentY += 2;
+
+    sub('The golden rule: an empty balance does NOT mean the money is gone');
+    addTextBlock(
+      'If you restore a seed and the wallet shows zero, the overwhelmingly likely explanation is that a detail below is missing \u2014 an added passphrase, a different derivation path, or a multisig setup. Do not panic, do not create a new wallet over it, and do not assume the funds were spent. Stop and check the asset\u2019s entry in this plan.'
+    );
+    currentY += 2;
+
+    sub('If the asset says it uses an added passphrase (\u201C25th word\u201D)');
+    addTextBlock(
+      'The seed phrase alone will open a real \u2014 but empty \u2014 wallet. The wallet holding the funds only appears when the passphrase is entered along with the seed during restore. The passphrase is a separate secret; its location is listed with the asset. Without it, no expert can reach the funds.'
+    );
+    currentY += 2;
+
+    sub('For an ordinary (single-signature) wallet');
+    addTextBlock(
+      '(1) On a clean computer, install the wallet software named under \u201CPlatform\u201D for that asset \u2014 download it only from the official website. (2) Choose \u201CRestore\u201D or \u201CImport\u201D, never \u201CCreate new\u201D. (3) Enter the recovered seed phrase (and passphrase, if used). (4) If the balance looks wrong, check the derivation path / script type listed with the asset \u2014 wallet software sometimes needs to be told which \u201Caccount type\u201D to look for.'
+    );
+    currentY += 2;
+
+    sub('If the asset is marked multisig \u2014 do not skip this');
+    addTextBlock(
+      'A multisig wallet is controlled by SEVERAL keys \u2014 for example \u201C2-of-3\u201D means any two of three keys must sign. Restoring it needs two things: enough of the seed phrases, AND the wallet\u2019s configuration file (called a \u201Cdescriptor\u201D or \u201Cwallet file\u201D), which lists all the keys that belong together. The descriptor\u2019s location is listed with the asset. With it, recovery is: open the wallet software, import the descriptor, then add the seeds \u2014 the software does the rest. Without it, reconstruction may be impossible even for a professional. If you cannot find the descriptor, stop and call the Technical Contact listed under Professional Contacts before doing anything else.'
+    );
+    currentY += 2;
+
+    sub('For accounts on an exchange or other custodial platform');
+    addTextBlock(
+      'There is no wallet to recreate \u2014 the platform holds the funds. Contact their support about their inheritance / estate process (they will ask for a death certificate and proof of authority). This is the legal and safest path.'
+    );
+    currentY += 2;
+
+    sub('When in doubt');
+    addTextBlock(
+      'The Technical Contact under Professional Contacts was chosen to help with exactly this section. A one-hour call before touching anything is worth more than any guide. Never type a seed phrase into a website, never share it with \u201Csupport staff\u201D who contact you first, and be aware that scammers watch obituaries.'
+    );
+    currentY += 4;
+  }
+
   // ── How to Restore Your Secret ──
   if (plan.howToRestore) {
     addSectionHeader(`${sectionNum++}. How to Restore Your Secret`);
@@ -440,12 +560,13 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
 
   // ── Professional Contacts ──
   const contactRows = (plan.professionalContacts ?? []).map(c => [c.role, c.name, c.phone, c.email]);
-  if (contactRows.some(rowHasData)) {
+  if (contactRows.some(r => rowHasData(r, [0]))) {
     addSectionHeader(`${sectionNum++}. Professional Contacts`);
     addTable(
       ['Role', 'Name', 'Phone', 'Email'],
       contactRows,
-      [40, 45, 40, 50]
+      [40, 45, 40, 50],
+      [0], // the default role labels are prefilled
     );
   }
 

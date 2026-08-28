@@ -33,7 +33,7 @@ export function isInheritancePlan(instruction: RawInstruction): boolean {
 /**
  * Parse the base64 fileContent of a RawInstruction back into an
  * InheritancePlan object. Returns null if parsing or validation fails.
- * Handles migrations from v1/v2/v3/v4 → v5.
+ * Handles migrations from v1/v2/v3/v4/v5 → v6.
  */
 export function rawInstructionToPlan(instruction: RawInstruction): InheritancePlan | null {
   try {
@@ -76,6 +76,8 @@ export function rawInstructionToPlan(instruction: RawInstruction): InheritancePl
           id: crypto.randomUUID(),
           description: '',
           password: creds.password ?? '',
+          passwordIsHint: false,
+          keyfileUsed: '',
           keyfilePrimaryLocation: creds.keyfilePrimaryLocation ?? '',
           keyfileBackupLocation: creds.keyfileBackupLocation ?? '',
           configuration: qards.configuration ?? '2-of-3',
@@ -89,6 +91,25 @@ export function rawInstructionToPlan(instruction: RawInstruction): InheritancePl
         // Clean up old fields
         delete parsed.recoveryCredentials;
         delete parsed.qardConfig;
+      }
+
+      // v5 → v6 migration: password-hint flag, explicit keyfile usage, and
+      // per-asset wallet-recovery fields. All default to "not specified" —
+      // a legacy plan makes no claim either way.
+      if (Array.isArray(parsed.secretSets)) {
+        for (const set of parsed.secretSets) {
+          if (typeof set.passwordIsHint !== 'boolean') set.passwordIsHint = false;
+          if (typeof set.keyfileUsed !== 'string') set.keyfileUsed = '';
+        }
+      }
+      if (Array.isArray(parsed.digitalAssets)) {
+        for (const asset of parsed.digitalAssets) {
+          if (typeof asset.walletKind !== 'string') asset.walletKind = '';
+          if (typeof asset.usesPassphrase !== 'string') asset.usesPassphrase = '';
+          if (typeof asset.derivationPath !== 'string') asset.derivationPath = '';
+          if (typeof asset.multisigDescriptorLocation !== 'string') asset.multisigDescriptorLocation = '';
+          if (typeof asset.multisigCosigners !== 'string') asset.multisigCosigners = '';
+        }
       }
 
       parsed.version = INHERITANCE_PLAN_VERSION;

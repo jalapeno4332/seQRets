@@ -4,6 +4,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronUp, Plus, Trash2, ShieldCheck, AlertTriangle, Info, KeyRound, Eye, EyeOff } from 'lucide-react';
 import type {
@@ -23,6 +25,35 @@ interface InheritancePlanFormProps {
   plan: InheritancePlan;
   onChange: (plan: InheritancePlan) => void;
   readOnly?: boolean;
+}
+
+// ── Three-state yes/no select ───────────────────────────────────────
+// '' = not specified (the legacy/default state — the plan makes no claim).
+// Radix Select can't represent an empty-string item value, so 'unspecified'
+// is mapped back to '' on change.
+function YesNoSelect({ value, onChange, disabled, yesLabel, noLabel }: {
+  value: string;
+  onChange: (v: '' | 'yes' | 'no') => void;
+  disabled?: boolean;
+  yesLabel: string;
+  noLabel: string;
+}) {
+  return (
+    <Select
+      value={value === '' ? 'unspecified' : value}
+      onValueChange={(v) => onChange(v === 'unspecified' ? '' : (v as 'yes' | 'no'))}
+      disabled={disabled}
+    >
+      <SelectTrigger className="text-sm">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="unspecified">Not specified</SelectItem>
+        <SelectItem value="yes">{yesLabel}</SelectItem>
+        <SelectItem value="no">{noLabel}</SelectItem>
+      </SelectContent>
+    </Select>
+  );
 }
 
 // ── Collapsible section wrapper ─────────────────────────────────────
@@ -194,7 +225,7 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
 
   // ── Secret Set helpers ──
 
-  const updateSecretSet = (id: string, field: keyof Omit<SecretSet, 'id' | 'qardLocations'>, value: string) => {
+  const updateSecretSet = <K extends keyof Omit<SecretSet, 'id' | 'qardLocations'>>(id: string, field: K, value: SecretSet[K]) => {
     onChange({
       ...plan,
       secretSets: plan.secretSets.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
@@ -276,7 +307,7 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
     onChange({ ...plan, deviceAccounts: plan.deviceAccounts.filter((d) => d.id !== id) });
   };
 
-  const updateAsset = (id: string, field: keyof Omit<DigitalAsset, 'id'>, value: string) => {
+  const updateAsset = <K extends keyof Omit<DigitalAsset, 'id'>>(id: string, field: K, value: DigitalAsset[K]) => {
     onChange({
       ...plan,
       digitalAssets: plan.digitalAssets.map((a) => (a.id === id ? { ...a, [field]: value } : a)),
@@ -288,7 +319,7 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
       ...plan,
       digitalAssets: [
         ...plan.digitalAssets,
-        { id: crypto.randomUUID(), name: '', type: '', platform: '', loginEmail: '', approxValue: '', twoFactorMethod: '', recoverySeed: '', specialInstructions: '' },
+        { id: crypto.randomUUID(), name: '', type: '', platform: '', loginEmail: '', approxValue: '', twoFactorMethod: '', recoverySeed: '', walletKind: '', usesPassphrase: '', derivationPath: '', multisigDescriptorLocation: '', multisigCosigners: '', specialInstructions: '' },
       ],
     });
   };
@@ -443,9 +474,27 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
               {/* Credentials */}
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label>seQRets Password</Label>
-                  <SensitiveInput value={secret.password} onChange={(v) => updateSecretSet(secret.id, 'password', v)} disabled={readOnly} placeholder="The exact password used when encrypting this secret or password hint." />
+                  <Label>{secret.passwordIsHint ? 'seQRets Password Hint' : 'seQRets Password'}</Label>
+                  <SensitiveInput value={secret.password} onChange={(v) => updateSecretSet(secret.id, 'password', v)} disabled={readOnly} placeholder={secret.passwordIsHint ? 'A hint your heirs will understand — not the password itself' : 'The exact password used when encrypting this secret'} />
                   <p className="text-xs text-muted-foreground">Every character matters. Copy-paste recommended.</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Switch id={`pw-hint-${secret.id}`} checked={secret.passwordIsHint} onCheckedChange={(on) => updateSecretSet(secret.id, 'passwordIsHint', on)} disabled={readOnly} />
+                    <Label htmlFor={`pw-hint-${secret.id}`} className="text-xs font-normal text-muted-foreground">This is a hint, not the actual password</Label>
+                  </div>
+                  {secret.passwordIsHint && (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400">The plan will clearly mark this as a hint — an heir who types a hint as the password gets an error identical to a wrong password.</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Was a keyfile used for this secret?</Label>
+                  <YesNoSelect
+                    value={secret.keyfileUsed}
+                    onChange={(v) => updateSecretSet(secret.id, 'keyfileUsed', v)}
+                    disabled={readOnly}
+                    yesLabel="Yes — required to decrypt"
+                    noLabel="No — password and Qards only"
+                  />
+                  <p className="text-xs text-muted-foreground">Say so explicitly. If a keyfile was used but your heirs don't know, decryption fails with what looks like a wrong-password error.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -590,6 +639,10 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
 
       {/* ── 5. Digital Asset Inventory ── */}
       <Section id="assets" number={5} title="Digital Asset Inventory" description="Every digital asset your heirs need to know about" expanded={expanded.has('assets')} onToggle={toggle}>
+        <div className="flex items-start gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-500/30 dark:border-yellow-500/20 text-xs text-yellow-800 dark:text-yellow-300">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+          <span><strong>Multisig wallet?</strong> Export your wallet's descriptor / config file (Sparrow, Electrum and Specter all offer this) and store it with this plan. The descriptor is <em>not</em> a spending secret like your seed — but without it, your heirs may be unable to reconstruct the wallet at all, even with enough seed phrases.</span>
+        </div>
         <div className="space-y-4">
           {plan.digitalAssets.map((asset, idx) => (
             <div key={asset.id} className="border border-border rounded-lg p-4 space-y-3">
@@ -630,6 +683,39 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
               <div className="space-y-1">
                 <Label className="text-xs">Recovery seed / key</Label>
                 <BlurInput value={asset.recoverySeed} onChange={(v) => updateAsset(asset.id, 'recoverySeed', v)} disabled={readOnly} placeholder='If protected by seQRets, reference the seQRet Set number here (e.g., "Protected by seQRets — seQRet 1")' className="text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Wallet kind</Label>
+                  <Input value={asset.walletKind} onChange={(e) => updateAsset(asset.id, 'walletKind', e.target.value)} disabled={readOnly} placeholder="Single-sig, Multisig 2-of-3, Hardware, Exchange" className="text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Uses an added passphrase ("25th word")?</Label>
+                  <YesNoSelect
+                    value={asset.usesPassphrase}
+                    onChange={(v) => updateAsset(asset.id, 'usesPassphrase', v)}
+                    disabled={readOnly}
+                    yesLabel="Yes — seed alone opens an empty wallet"
+                    noLabel="No — seed phrase is sufficient"
+                  />
+                </div>
+              </div>
+              {asset.usesPassphrase === 'yes' && (
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">Make sure the passphrase itself is protected and its location documented — in Special instructions below, or as its own seQRet Set. Without it the funds are unreachable.</p>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Derivation path / script type</Label>
+                <Input value={asset.derivationPath} onChange={(e) => updateAsset(asset.id, 'derivationPath', e.target.value)} disabled={readOnly} placeholder={'e.g., Native SegWit (BIP84), m/84\'/0\'/0\' — or "wallet default" if unsure'} className="text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Multisig descriptor / config file location</Label>
+                  <Input value={asset.multisigDescriptorLocation} onChange={(e) => updateAsset(asset.id, 'multisigDescriptorLocation', e.target.value)} disabled={readOnly} placeholder="e.g., USB in safe, printed with this plan" className="text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Multisig cosigners (who holds which key)</Label>
+                  <Input value={asset.multisigCosigners} onChange={(e) => updateAsset(asset.id, 'multisigCosigners', e.target.value)} disabled={readOnly} placeholder="e.g., Key 1 me, Key 2 spouse, Key 3 attorney" className="text-sm" />
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Special instructions</Label>

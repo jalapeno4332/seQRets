@@ -3,7 +3,7 @@
 // Plans are serialized to JSON, encrypted via the existing
 // encryptInstructions pipeline, and stored on smart card or file.
 
-export const INHERITANCE_PLAN_VERSION = 5;
+export const INHERITANCE_PLAN_VERSION = 6;
 export const INHERITANCE_PLAN_FILENAME = 'inheritance-plan.json';
 export const INHERITANCE_PLAN_FILETYPE = 'application/json';
 
@@ -45,6 +45,19 @@ export interface SecretSet {
   id: string;
   description: string;
   password: string;
+  /**
+   * v6: true when the `password` field holds a hint rather than the actual
+   * password. Disambiguates for heirs — typing a hint verbatim as the
+   * password fails with an error indistinguishable from a wrong password.
+   */
+  passwordIsHint: boolean;
+  /**
+   * v6: explicit keyfile usage — '' = not specified (legacy plans),
+   * 'yes' / 'no'. Removes the blank-field ambiguity: without this, a
+   * missing keyfile fails decryption with what looks like a wrong-password
+   * error, and heirs cannot tell whether a keyfile was ever involved.
+   */
+  keyfileUsed: '' | 'yes' | 'no';
   keyfilePrimaryLocation: string;
   keyfileBackupLocation: string;
   configuration: string;
@@ -64,6 +77,21 @@ export interface DigitalAsset {
   approxValue: string;
   twoFactorMethod: string;
   recoverySeed: string;
+  /** v6: single-sig / multisig / hardware wallet / custodial exchange / other. */
+  walletKind: string;
+  /**
+   * v6: whether the wallet uses an added BIP-39 passphrase ("25th word").
+   * '' = not specified, 'yes' / 'no'. A seed restored without its
+   * passphrase opens an EMPTY wallet — the most common self-inflicted
+   * inheritance loss in self-custody. The question itself is the guard.
+   */
+  usesPassphrase: '' | 'yes' | 'no';
+  /** v6: derivation path / script type (e.g. Native SegWit, m/84'/0'/0'). */
+  derivationPath: string;
+  /** v6: where the multisig wallet descriptor / config file is stored. */
+  multisigDescriptorLocation: string;
+  /** v6: who holds which key in a multisig setup. */
+  multisigCosigners: string;
   specialInstructions: string;
 }
 
@@ -116,11 +144,15 @@ const DEFAULT_RESTORE_STEPS = `1. Download seQRets from seqrets.app or use the w
 6. If a keyfile was used, toggle "Was a Keyfile used?" and load it from the location listed.
 7. Click "Restore Secret".
 8. Write down the restored secret on paper immediately. Do not save it digitally.
-9. Use the restored secret to access your assets per the Digital Asset Inventory.
+9. Use the restored secret to access your assets per the Digital Asset Inventory. For crypto wallets, follow the "Recreating the Wallets" appendix — restoring a seed phrase is NOT the last step, and a wallet that shows an empty balance does not mean the funds are gone.
 10. After securing all assets, delete all unencrypted copies of this document.`;
 
+const DEFAULT_IMMEDIATE_ACTIONS = `1. Keep my phone line active — do not cancel the phone plan. Text-message (SMS) verification codes and account-recovery calls go to that number, and once it is cancelled the number may be given to a stranger.
+2. Secure my primary email account before anything else. Almost every "Forgot password" flow ends at that inbox — whoever controls the email controls most other accounts. Check that its own recovery options don't point at a phone or account you can't reach.
+3. [Add your own time-sensitive obligations: bills, mortgage, insurance, margin calls, subscriptions, etc.]`;
+
 const DEFAULT_EMERGENCY_ACCESS_PROCEDURE = `1. Follow the steps in "How to Restore Your Secret" above to recover the encrypted secrets needed for this emergency.
-2. If the seQRets app cannot be installed on the available computer, use the standalone recovery tool referenced in Section 6 (recover.html) — it runs offline in any browser.
+2. If the seQRets app cannot be installed on the available computer, use the standalone recovery tool (recover.html) described in the "How to Restore — Read This First" section of this plan — it runs offline in any browser.
 3. [Add any emergency-specific steps: where hardware is kept, who to contact first, which assets to access in what order, etc.]`;
 
 export function createBlankSecretSet(): SecretSet {
@@ -128,6 +160,8 @@ export function createBlankSecretSet(): SecretSet {
     id: crypto.randomUUID(),
     description: '',
     password: '',
+    passwordIsHint: false,
+    keyfileUsed: '',
     keyfilePrimaryLocation: '',
     keyfileBackupLocation: '',
     configuration: '2-of-3',
@@ -167,7 +201,7 @@ export function createBlankPlan(): InheritancePlan {
       { id: crypto.randomUUID(), label: '', type: '2FA / Authenticator App', location: '', username: '', password: '', notes: '' },
     ],
     digitalAssets: [
-      { id: crypto.randomUUID(), name: '', type: '', platform: '', loginEmail: '', approxValue: '', twoFactorMethod: '', recoverySeed: '', specialInstructions: '' },
+      { id: crypto.randomUUID(), name: '', type: '', platform: '', loginEmail: '', approxValue: '', twoFactorMethod: '', recoverySeed: '', walletKind: '', usesPassphrase: '', derivationPath: '', multisigDescriptorLocation: '', multisigCosigners: '', specialInstructions: '' },
     ],
     howToRestore: DEFAULT_RESTORE_STEPS,
     professionalContacts: [
@@ -181,7 +215,7 @@ export function createBlankPlan(): InheritancePlan {
       emergencyContact: '',
       triggerConditions: '',
       accessProcedure: DEFAULT_EMERGENCY_ACCESS_PROCEDURE,
-      immediateActions: '',
+      immediateActions: DEFAULT_IMMEDIATE_ACTIONS,
       scopeLimitations: '',
     },
     personalMessage: '',

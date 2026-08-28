@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Lock, KeyRound, Eye, EyeOff, Paperclip, Loader2, CheckCircle2, X, FileDown, ArrowDown, ShieldCheck, Download, CreditCard, RefreshCcw, Save, TriangleAlert, FilePenLine, Bot, FileText } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Link } from 'react-router-dom';
 import { useTheme } from '@/components/theme-provider';
 import { Header } from '@/components/header';
@@ -101,6 +102,9 @@ export default function InstructionsPage() {
   const [decryptedPlan, setDecryptedPlan] = useState<InheritancePlan | null>(null);
   const [showPlanViewer, setShowPlanViewer] = useState(false);
   const [showReminderPrompt, setShowReminderPrompt] = useState(false);
+  // Plaintext-PDF export confirmation: the PDF carries every password and
+  // PIN in cleartext, so exporting deserves one explicit moment of consent.
+  const [pdfWarningPlan, setPdfWarningPlan] = useState<InheritancePlan | null>(null);
 
   // End-of-flow marker for the active tab (only one TabsContent is mounted
   // at a time). Newly revealed steps render below the fold, so scroll them
@@ -204,7 +208,12 @@ export default function InstructionsPage() {
     }
   };
 
-  const handleExportPdf = async (plan: InheritancePlan) => {
+  // Both export buttons route here; the actual export runs after the user
+  // confirms the plaintext warning in the AlertDialog below.
+  const handleExportPdf = (plan: InheritancePlan) => setPdfWarningPlan(plan);
+
+  const doExportPdf = async (plan: InheritancePlan) => {
+    setPdfWarningPlan(null);
     try {
       const pdf = await generatePlanPdf(plan);
       const pdfFilename = getPlanPdfFilename(plan);
@@ -662,6 +671,10 @@ export default function InstructionsPage() {
                         <h3 className="text-xl font-semibold">Provide Credentials</h3>
                       </div>
                       <div className="pl-11 space-y-6">
+                        <div className="flex items-start gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-500/30 dark:border-yellow-500/20 text-xs text-yellow-800 dark:text-yellow-300">
+                          <TriangleAlert className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+                          <span><strong>Your heirs will need THIS password to open the plan.</strong> The plan documents every other password — but it can't document its own. Decide now where your heirs will learn it: written in your will, sealed with your attorney, split into its own set of Qards, or a printed copy of the plan stored somewhere they can reach.</span>
+                        </div>
                         <PasswordGenerator value={encryptPassword} onValueChange={setEncryptPassword} onValidationChange={setIsEncryptPasswordValid} placeholder="Enter the password used for your Qards or generate a new one" />
                         <div className="space-y-4 rounded-md border p-4">
                           <div className="flex items-center justify-between">
@@ -1058,6 +1071,33 @@ export default function InstructionsPage() {
         open={showReminderPrompt}
         onClose={() => setShowReminderPrompt(false)}
       />
+
+      {/* Plaintext-PDF export warning */}
+      <AlertDialog open={pdfWarningPlan !== null} onOpenChange={(open) => { if (!open) setPdfWarningPlan(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>This PDF is not encrypted</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                The exported PDF contains everything in this plan in plain text — every password,
+                PIN, and location. That is its purpose: it's the copy your heirs can always read,
+                with no software and no password.
+              </span>
+              <span className="block font-medium text-foreground">
+                Treat the file like cash: print it, store the paper somewhere your heirs can
+                reach (a safe, your attorney), then delete the PDF file — don't leave it in
+                Downloads or cloud-synced folders.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => pdfWarningPlan && doExportPdf(pdfWarningPlan)}>
+              Export PDF
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }
