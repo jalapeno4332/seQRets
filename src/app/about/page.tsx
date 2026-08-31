@@ -4,7 +4,8 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Shield, Lock, Key, QrCode, Github, LifeBuoy, Puzzle, Download, Laptop } from "lucide-react";
+import { ArrowLeft, Shield, Lock, Key, QrCode, LifeBuoy, Puzzle, Download, Laptop } from "lucide-react";
+import { GithubIcon } from "@/components/ui/github-icon";
 import Link from "next/link";
 import { Header } from "../components/header";
 import { AppFooter } from "../components/app-footer";
@@ -73,7 +74,7 @@ export default function AboutPage() {
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-3">
-                                <Github className="h-6 w-6 text-primary dark:text-[#38bdf8]" />
+                                <GithubIcon className="h-6 w-6 text-primary dark:text-[#38bdf8]" />
                                 <CardTitle>Open Source</CardTitle>
                             </div>
                         </CardHeader>
@@ -184,7 +185,7 @@ export default function AboutPage() {
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                             >
-                                <Github className="h-3.5 w-3.5" />
+                                <GithubIcon className="h-3.5 w-3.5" />
                                 View source
                             </a>
                         </div>
