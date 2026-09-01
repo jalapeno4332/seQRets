@@ -25,13 +25,13 @@ import { playFileDropSound } from '@/lib/play-sound';
 import type { RawInstruction, DecryptInstructionRequest, EncryptedInstruction } from '@/lib/types';
 import { SmartCardDialog } from '@/components/smartcard-dialog';
 import { DEFAULT_CARD_CAPACITY, type CardItem } from '@/lib/smartcard';
-import { saveFileNative, saveTextFileNative, base64ToUint8Array, PDF_FILTERS } from '@/lib/native-save';
+import { saveFileNative, saveTextFileNative, savedFileName, base64ToUint8Array, PDF_FILTERS } from '@/lib/native-save';
 import { generatePlanPdf, getPlanPdfFilename } from '@/lib/generate-plan-pdf';
 import { encryptInstructions, decryptInstructions } from '@/lib/desktop-crypto';
 import { InheritancePlanForm } from '@/components/inheritance-plan-form';
 import { InheritancePlanViewer } from '@/components/inheritance-plan-viewer';
 import { ReviewReminderPrompt } from '@/components/review-reminder-prompt';
-import { createBlankPlan } from '@/lib/inheritance-plan-types';
+import { createBlankPlan, planFileLastName } from '@/lib/inheritance-plan-types';
 import type { InheritancePlan } from '@/lib/inheritance-plan-types';
 import { planToRawInstruction, isInheritancePlan, rawInstructionToPlan } from '@/lib/inheritance-plan-utils';
 import {
@@ -178,11 +178,8 @@ export default function InstructionsPage() {
 
   // Build a filename from the plan's "Prepared by" field (or fallback to generic)
   const planFileName = (() => {
-    if (encryptMode !== 'create' || !inheritancePlan.planInfo.preparedBy.trim()) {
-      return 'seqrets-inheritance-plan.json';
-    }
-    const parts = inheritancePlan.planInfo.preparedBy.trim().split(/\s+/);
-    const lastName = parts[parts.length - 1].replace(/[^a-zA-Z0-9-]/g, '');
+    if (encryptMode !== 'create') return 'seqrets-inheritance-plan.json';
+    const lastName = planFileLastName(inheritancePlan.planInfo.preparedBy);
     return lastName ? `${lastName}-Inheritance-Plan.json` : 'seqrets-inheritance-plan.json';
   })();
 
@@ -204,7 +201,7 @@ export default function InstructionsPage() {
       jsonStr,
     );
     if (savedPath) {
-      toast({ title: 'File Saved!', description: `Saved "${planFileName}" successfully.` });
+      toast({ title: 'File Saved!', description: `Saved "${savedFileName(savedPath)}" successfully.` });
     }
   };
 
@@ -221,7 +218,7 @@ export default function InstructionsPage() {
       const data = new Uint8Array(arrayBuffer);
       const savedPath = await saveFileNative(pdfFilename, PDF_FILTERS, data);
       if (savedPath) {
-        toast({ title: 'PDF Exported!', description: `Saved "${pdfFilename}" successfully.` });
+        toast({ title: 'PDF Exported!', description: `Saved "${savedFileName(savedPath)}" successfully.` });
       }
     } catch (err) {
       toast({ variant: 'destructive', title: 'PDF Export Failed', description: String(err) });
@@ -348,7 +345,7 @@ export default function InstructionsPage() {
       const filters = [{ name: `${ext.toUpperCase()} Files`, extensions: [ext] }];
       const savedPath = await saveFileNative(fileName, filters, byteArray);
       if (savedPath) {
-        toast({ title: 'Instructions Decrypted!', description: `Saved "${fileName}" successfully.` });
+        toast({ title: 'Instructions Decrypted!', description: `Saved "${savedFileName(savedPath)}" successfully.` });
       }
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Decryption Failed', description: e?.message || 'Could not decrypt the instructions file.' });
@@ -983,8 +980,7 @@ export default function InstructionsPage() {
                       plan={decryptedPlan}
                       onSaveAsFile={async () => {
                         const jsonStr = JSON.stringify(decryptedPlan, null, 2);
-                        const parts = decryptedPlan.planInfo.preparedBy.trim().split(/\s+/);
-                        const lastName = parts.length > 0 ? parts[parts.length - 1].replace(/[^a-zA-Z0-9-]/g, '') : '';
+                        const lastName = planFileLastName(decryptedPlan.planInfo.preparedBy);
                         const exportName = lastName ? `${lastName}-Inheritance-Plan.json` : 'Inheritance-Plan.json';
                         const savedPath = await saveTextFileNative(
                           exportName,
@@ -992,7 +988,7 @@ export default function InstructionsPage() {
                           jsonStr,
                         );
                         if (savedPath) {
-                          toast({ title: 'File Saved!', description: `Saved "${exportName}" successfully.` });
+                          toast({ title: 'File Saved!', description: `Saved "${savedFileName(savedPath)}" successfully.` });
                         }
                       }}
                       onExportPdf={() => handleExportPdf(decryptedPlan)}

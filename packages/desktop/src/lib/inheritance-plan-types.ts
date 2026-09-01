@@ -155,6 +155,18 @@ const DEFAULT_EMERGENCY_ACCESS_PROCEDURE = `1. Follow the steps in "How to Resto
 2. If the seQRets app cannot be installed on the available computer, use the standalone recovery tool (recover.html) described in the "How to Restore — Read This First" section of this plan — it runs offline in any browser.
 3. [Add any emergency-specific steps: where hardware is kept, who to contact first, which assets to access in what order, etc.]`;
 
+/**
+ * Last word of "Prepared by", stripped to filename-safe characters.
+ * Shared by the JSON and PDF export-name builders so both suggest the same
+ * base name ("Sam Sample (Test Run)" → "Run", never "Run)").
+ */
+export function planFileLastName(preparedBy: string | undefined): string {
+  const trimmed = (preparedBy ?? '').trim();
+  if (!trimmed) return '';
+  const last = trimmed.split(/\s+/).pop() ?? '';
+  return last.replace(/[^a-zA-Z0-9-]/g, '');
+}
+
 export function createBlankSecretSet(): SecretSet {
   return {
     id: crypto.randomUUID(),

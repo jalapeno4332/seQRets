@@ -52,6 +52,15 @@ export async function saveTextFileNative(
   return filePath;
 }
 
+/**
+ * Basename of a path returned by the save dialog, for "Saved <name>" toasts —
+ * the user may have renamed the file, so never echo the suggested default.
+ * Handles both / and \ separators (macOS/Linux and Windows builds).
+ */
+export function savedFileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
 // ── Data conversion helpers ────────────────────────────────────────────
 
 /** Convert a canvas data URL (e.g. "data:image/png;base64,...") to Uint8Array. */

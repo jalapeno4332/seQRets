@@ -4,6 +4,7 @@
  */
 import { jsPDF } from 'jspdf';
 import type { InheritancePlan } from './inheritance-plan-types';
+import { planFileLastName } from './inheritance-plan-types';
 import logoPng from '@/assets/icons/logo-light-128.png';
 
 // ── Layout constants ──────────────────────────────────────────────────
@@ -497,59 +498,60 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
   // gets them to a recovered seed phrase; this section gets them from the
   // seed phrase to the actual funds — the step most inheritance documents
   // silently skip, and where most self-custody inheritance losses happen.
-  if (assets.length > 0) {
-    addSectionHeader(`${sectionNum++}. Recreating the Wallets \u2014 Read Before Moving Any Funds`);
+  // Rendered even with an empty asset inventory: the stored "How to Restore
+  // Your Secret" text (step 9) points heirs at this appendix in every plan,
+  // and the guidance stands on its own.
+  addSectionHeader(`${sectionNum++}. Recreating the Wallets \u2014 Read Before Moving Any Funds`);
 
-    const sub = (title: string) => {
-      checkPageBreak(10);
-      doc.setFontSize(BODY_SIZE);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...PRIMARY_COLOR);
-      doc.text(title, MARGIN_L + 2, currentY);
-      currentY += 5;
-    };
+  const sub = (title: string) => {
+    checkPageBreak(10);
+    doc.setFontSize(BODY_SIZE);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...PRIMARY_COLOR);
+    doc.text(title, MARGIN_L + 2, currentY);
+    currentY += 5;
+  };
 
-    addTextBlock(
-      'A recovered seed phrase is not money you can spend yet \u2014 it is the master key to a wallet. To reach the funds, the wallet has to be recreated in wallet software using that key. Take your time: nothing about a wallet expires in a day, and the most expensive mistakes happen when people rush this step.'
-    );
-    currentY += 2;
+  addTextBlock(
+    'A recovered seed phrase is not money you can spend yet \u2014 it is the master key to a wallet. To reach the funds, the wallet has to be recreated in wallet software using that key. Take your time: nothing about a wallet expires in a day, and the most expensive mistakes happen when people rush this step.'
+  );
+  currentY += 2;
 
-    sub('The golden rule: an empty balance does NOT mean the money is gone');
-    addTextBlock(
-      'If you restore a seed and the wallet shows zero, the overwhelmingly likely explanation is that a detail below is missing \u2014 an added passphrase, a different derivation path, or a multisig setup. Do not panic, do not create a new wallet over it, and do not assume the funds were spent. Stop and check the asset\u2019s entry in this plan.'
-    );
-    currentY += 2;
+  sub('The golden rule: an empty balance does NOT mean the money is gone');
+  addTextBlock(
+    'If you restore a seed and the wallet shows zero, the overwhelmingly likely explanation is that a detail below is missing \u2014 an added passphrase, a different derivation path, or a multisig setup. Do not panic, do not create a new wallet over it, and do not assume the funds were spent. Stop and check the asset\u2019s entry in this plan.'
+  );
+  currentY += 2;
 
-    sub('If the asset says it uses an added passphrase (\u201C25th word\u201D)');
-    addTextBlock(
-      'The seed phrase alone will open a real \u2014 but empty \u2014 wallet. The wallet holding the funds only appears when the passphrase is entered along with the seed during restore. The passphrase is a separate secret; its location is listed with the asset. Without it, no expert can reach the funds.'
-    );
-    currentY += 2;
+  sub('If the asset says it uses an added passphrase (\u201C25th word\u201D)');
+  addTextBlock(
+    'The seed phrase alone will open a real \u2014 but empty \u2014 wallet. The wallet holding the funds only appears when the passphrase is entered along with the seed during restore. The passphrase is a separate secret; its location is listed with the asset. Without it, no expert can reach the funds.'
+  );
+  currentY += 2;
 
-    sub('For an ordinary (single-signature) wallet');
-    addTextBlock(
-      '(1) On a clean computer, install the wallet software named under \u201CPlatform\u201D for that asset \u2014 download it only from the official website. (2) Choose \u201CRestore\u201D or \u201CImport\u201D, never \u201CCreate new\u201D. (3) Enter the recovered seed phrase (and passphrase, if used). (4) If the balance looks wrong, check the derivation path / script type listed with the asset \u2014 wallet software sometimes needs to be told which \u201Caccount type\u201D to look for.'
-    );
-    currentY += 2;
+  sub('For an ordinary (single-signature) wallet');
+  addTextBlock(
+    '(1) On a clean computer, install the wallet software named under \u201CPlatform\u201D for that asset \u2014 download it only from the official website. (2) Choose \u201CRestore\u201D or \u201CImport\u201D, never \u201CCreate new\u201D. (3) Enter the recovered seed phrase (and passphrase, if used). (4) If the balance looks wrong, check the derivation path / script type listed with the asset \u2014 wallet software sometimes needs to be told which \u201Caccount type\u201D to look for.'
+  );
+  currentY += 2;
 
-    sub('If the asset is marked multisig \u2014 do not skip this');
-    addTextBlock(
-      'A multisig wallet is controlled by SEVERAL keys \u2014 for example \u201C2-of-3\u201D means any two of three keys must sign. Restoring it needs two things: enough of the seed phrases, AND the wallet\u2019s configuration file (called a \u201Cdescriptor\u201D or \u201Cwallet file\u201D), which lists all the keys that belong together. The descriptor\u2019s location is listed with the asset. With it, recovery is: open the wallet software, import the descriptor, then add the seeds \u2014 the software does the rest. Without it, reconstruction may be impossible even for a professional. If you cannot find the descriptor, stop and call the Technical Contact listed under Professional Contacts before doing anything else.'
-    );
-    currentY += 2;
+  sub('If the asset is marked multisig \u2014 do not skip this');
+  addTextBlock(
+    'A multisig wallet is controlled by SEVERAL keys \u2014 for example \u201C2-of-3\u201D means any two of three keys must sign. Restoring it needs two things: enough of the seed phrases, AND the wallet\u2019s configuration file (called a \u201Cdescriptor\u201D or \u201Cwallet file\u201D), which lists all the keys that belong together. The descriptor\u2019s location is listed with the asset. With it, recovery is: open the wallet software, import the descriptor, then add the seeds \u2014 the software does the rest. Without it, reconstruction may be impossible even for a professional. If you cannot find the descriptor, stop and call the Technical Contact listed under Professional Contacts before doing anything else.'
+  );
+  currentY += 2;
 
-    sub('For accounts on an exchange or other custodial platform');
-    addTextBlock(
-      'There is no wallet to recreate \u2014 the platform holds the funds. Contact their support about their inheritance / estate process (they will ask for a death certificate and proof of authority). This is the legal and safest path.'
-    );
-    currentY += 2;
+  sub('For accounts on an exchange or other custodial platform');
+  addTextBlock(
+    'There is no wallet to recreate \u2014 the platform holds the funds. Contact their support about their inheritance / estate process (they will ask for a death certificate and proof of authority). This is the legal and safest path.'
+  );
+  currentY += 2;
 
-    sub('When in doubt');
-    addTextBlock(
-      'The Technical Contact under Professional Contacts was chosen to help with exactly this section. A one-hour call before touching anything is worth more than any guide. Never type a seed phrase into a website, never share it with \u201Csupport staff\u201D who contact you first, and be aware that scammers watch obituaries.'
-    );
-    currentY += 4;
-  }
+  sub('When in doubt');
+  addTextBlock(
+    'The Technical Contact under Professional Contacts was chosen to help with exactly this section. A one-hour call before touching anything is worth more than any guide. Never type a seed phrase into a website, never share it with \u201Csupport staff\u201D who contact you first, and be aware that scammers watch obituaries.'
+  );
+  currentY += 4;
 
   // ── How to Restore Your Secret ──
   if (plan.howToRestore) {
@@ -626,8 +628,6 @@ export async function generatePlanPdf(plan: InheritancePlan): Promise<jsPDF> {
  * E.g., "John Smith" → "Smith-Inheritance-Plan.pdf"
  */
 export function getPlanPdfFilename(plan: InheritancePlan): string {
-  const name = plan.planInfo.preparedBy?.trim();
-  if (!name) return 'seqrets-inheritance-plan.pdf';
-  const lastName = name.split(/\s+/).pop() || name;
-  return `${lastName}-Inheritance-Plan.pdf`;
+  const lastName = planFileLastName(plan.planInfo.preparedBy);
+  return lastName ? `${lastName}-Inheritance-Plan.pdf` : 'seqrets-inheritance-plan.pdf';
 }
