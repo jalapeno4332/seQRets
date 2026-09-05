@@ -43,6 +43,53 @@ web-build. Full `tauri:build` / Rust compile is only needed for batches that tou
 
 ---
 
+## Launch gate — OS code signing · ⏳ OPEN (added 2026-09-05)
+
+**Two different signatures keep getting conflated in our own docs. They are not the same thing:**
+
+- **Tauri updater signature (minisign)** — ✅ **REAL and active.** `TAURI_SIGNING_PRIVATE_KEY` is
+  live at `seQRets-Releases/.github/workflows/build-and-release.yml:95`, and `.sig` artifacts ship
+  with every release. This is what makes auto-updates tamper-proof.
+- **OS code signing (Gatekeeper / SmartScreen)** — ❌ **NOT configured.** Every `APPLE_*` and
+  `WINDOWS_CERTIFICATE` line in that workflow is commented out (lines 97–107), and
+  `tauri.conf.json` sets no `signingIdentity` / `certificateThumbprint` (macOS block carries only
+  an entitlements path). The Apple Developer account ($99/yr) and the Windows OV/EV — or Azure
+  Trusted Signing — cert are not purchased.
+
+### Blocking gate — before the first PAID binary ships
+
+1. Uncomment the `APPLE_*` (signing + notarization) and `WINDOWS_CERTIFICATE` blocks in
+   `build-and-release.yml` and populate the matching repo secrets.
+2. **Do not trust that buying the cert was sufficient.** Download the artifacts from the actual
+   release and verify them by hand:
+   ```
+   codesign -dv --verbose=4 seQRets_x.y.z_aarch64.dmg   # expect Authority + TeamIdentifier
+   spctl -a -t open --context context:primary-signature -v seQRets_x.y.z_aarch64.dmg   # notarized?
+   signtool verify /pa /v seQRets_x.y.z_x64-setup.exe   # Windows
+   ```
+3. Only once (2) passes, restore the claims softened below.
+
+### Claims softened 2026-09-05 — user-facing · ✅ DONE
+
+- `src/app/go-pro/page.tsx:29` — row now reads "Code signed for macOS & Windows (at launch)"
+  (was "Cryptographically signed install file", live on app.seqrets.app at the time).
+- `src/ai/flows/ask-bob-flow.ts` + `packages/desktop/src/lib/bob-api.ts` (byte-identical twins) —
+  Bob's CDN/supply-chain answer now credits the real per-load-CDN win and the update signature,
+  states OS signing is planned for launch, and warns that official *and* self-built builds can
+  show an "unidentified developer" prompt until then.
+
+### Still overclaiming — internal docs, deliberately left until certs land
+
+- `README.md:37` — "**Code signed** | ✗ | ✓" comparison row.
+- `docs/ARCHITECTURE.md:297` and `:304`.
+- `docs/SECURITY_ANALYSIS.md:217`, `:219`, `:330`. ⚠️ Do **not** fix these with a header bump —
+  that header asserts review coverage nobody has performed for v1.15.x; it needs a real pass.
+- `seQRets-Releases/.github/workflows/build-and-release.yml:125` — CI boilerplate release body says
+  "This is an official signed release". Harmless while notes are hand-applied after every run, but
+  it bites the moment a draft is published with the stock text.
+
+---
+
 ## Tier 0 — Close before widening the launch
 
 > **✅ ALL COMPLETE (2026-07-04)** — 0.1, 0.2, 0.3, 0.4 all shipped and verified. This is the pre-launch-worthy security set.

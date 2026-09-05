@@ -26,7 +26,7 @@ const features = [
     { name: 'Encryption runs outside the browser', web: false, desktop: true },
     { name: 'Securely erases keys from memory', web: false, desktop: true },
     { name: 'Safe from malicious browser add-ons', web: false, desktop: true },
-    { name: 'Cryptographically signed install file', web: false, desktop: true },
+    { name: 'Code signed for macOS & Windows (at launch)', web: false, desktop: true },
     { name: 'Automatic updates', web: false, desktop: true },
 ];
 

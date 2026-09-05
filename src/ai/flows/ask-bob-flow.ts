@@ -517,7 +517,7 @@ JS string memory: The password string still briefly transits the JS heap before 
 
 Key zeroization: The Rust zeroize crate provides compiler-fence guaranteed key erasure — the optimizer cannot elide the wipe. This is stronger than fill(0) in JavaScript.
 
-CDN / supply chain: The official signed release is a code-signed binary with integrity verified at install time, eliminating the per-load CDN risk. IMPORTANT: Self-built binaries from source are NOT code-signed. They will trigger OS gatekeeper warnings, do not receive automatic updates, and the user is responsible for verifying their own build integrity. The CDN/supply-chain protections apply only to the official release purchased at https://seqrets.app.
+CDN / supply chain: The official release is downloaded once and runs from disk, rather than re-fetching fresh JavaScript through a CDN on every visit — that removes the per-load supply-chain risk the web app carries. App updates are cryptographically signed, and the desktop app verifies that signature before installing an update. Note: OS-level code signing (Apple notarization on macOS, SmartScreen reputation on Windows) is not in place yet — it is planned for launch. Until then, both the official build and self-built builds can show an "unidentified developer" warning the first time they are opened. Self-built binaries from source additionally do not receive automatic updates, and the user is responsible for verifying their own build integrity.
 
 Constant-time operations: The Rust crypto crates (argon2, chacha20poly1305) are constant-time by design.
 
