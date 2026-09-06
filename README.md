@@ -82,6 +82,20 @@ seQRets uses industry-standard primitives entirely client-side. **The core crypt
 For the full cryptographic design and threat model, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
+### Verifying it yourself
+
+The crypto core has a test suite you can run without installing a test framework:
+
+```bash
+npm install
+npm test          # crypto core (TypeScript), ~30s — Argon2id is deliberately slow
+npm run test:all  # adds the Rust suite, including TypeScript↔Rust parity vectors
+```
+
+It runs against the built `@seqrets/crypto`, so what is tested is what ships. Beyond round-tripping secrets, it pins the promises this README makes: that the SHA-256 covers everything before `|sha256:` (so `shasum` verification by hand actually works), that a Qard from a *newer* seQRets refuses to be misparsed and says so, that damaged recovery metadata never blocks a restore, and that payload padding uses zero bytes only.
+
+The **[seQRets Recover](https://github.com/seQRets/seQRets-Recover)** lifeboat has its own suite that replays Qards minted by this app through Recover's deliberately older, pinned crypto — proving a Qard created today still opens in the recovery tool your heirs would use.
+
 ## 📚 Further Reading
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — cryptographic design, encrypt-first ordering, quantum resistance, RNG, and the web vs desktop threat model

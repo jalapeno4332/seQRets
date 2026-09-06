@@ -145,10 +145,34 @@ features are in no document at all: `set_wipe_protect` (INS 0x23) and `force_era
 header asserts review coverage, and nobody has reviewed the v1.15.x work through that lens. It
 needs an actual pass, not an edit. (Flagged twice already and deliberately left alone.)
 
-### [ ] 7 — No test runner · OPEN (partly addressed)
-`npm test` in this repo is still a no-op. Rust unit tests, a Playwright suite and A/B harnesses
-exist but no single command a contributor or auditor can run. Recover now has a real `npm test`
-(finding 1) — this repo does not.
+### [x] 7 — No test runner · ✅ CLOSED (2026-09-06)
+⚠️ The finding overstated what existed: there was **no Playwright suite and no committed A/B
+harness** — those were per-item scratch files during Batch G that were never checked in. The
+actual inventory was 11 Rust tests in `crypto.rs` and nothing else. (Another instance of a claim
+inherited from notes rather than checked against source.)
+
+Now: `tests/crypto.test.mjs` — 33 tests on Node's built-in runner, no framework and no new
+dependencies, run against the BUILT `@seqrets/crypto` so what is tested is what ships.
+
+    npm test         # crypto core, ~30s
+    npm run test:rust
+    npm run test:all
+
+It encodes the invariants this file and CLAUDE.md describe but nothing enforced: the hash covers
+everything before `|sha256:` (the documented `shasum` recipe), hash-located-by-content so the
+v1.11.0 layout still verifies, legacy 3-segment shares report `hashValid: null` and never `false`,
+unknown metadata keys are ignored but hash-covered, a `v=` above `SHARE_FORMAT_VERSION` throws the
+update message, contradictory or partial t/n/i trios are nulled without breaking restore, the
+256 KB `MAX_SHARE_LENGTH` ceiling, padding to 192-byte buckets **with zero bytes only**,
+non-leading-subset Shamir reconstruction, keyfile-as-second-factor, and the creation guards.
+
+Validated by mutation: three deliberate defects injected into `crypto.ts` (non-zero padding,
+disabled version gate, no t/n/i nulling) produced 8 failures across 5 suites. The non-zero-padding
+mutant also broke every round trip — an empirical demonstration of why padding bytes must stay
+0x00 for pako compatibility.
+
+CI: `deploy.yml` gates the Pages deploy on `npm test`; `tests.yml` runs TS + Rust on every PR,
+which is where a dependency bump breaking TS↔Rust parity would realistically appear.
 
 ### [x] 8 — Web CSP `unsafe-inline` · ✅ ACCEPTED, see item 1.3 above
 Deferral reasoning holds: zero XSS sinks, and a hash pipeline that blanks the site on mismatch is

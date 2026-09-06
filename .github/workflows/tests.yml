@@ -1,0 +1,61 @@
+# Full test suite for pull requests — TypeScript crypto core plus the Rust
+# implementation.
+#
+# Pushes to main are covered by the `test` job in deploy.yml, which gates the
+# web deploy, so this runs on pull_request only and the same suite is never
+# run twice for one push.
+#
+# The Rust job matters most here: a Dependabot bump to argon2, chacha20poly1305
+# or zeroize that broke TS<->Rust parity would otherwise only be caught by
+# hand. The parity tests in crypto.rs decrypt blobs produced by @seqrets/crypto,
+# so they fail loudly if the two implementations drift apart.
+
+name: Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crypto-ts:
+    name: Crypto core (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  crypto-rust:
+    name: Crypto core (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # The crypto module is self-contained; building the full Tauri app would
+      # drag in system webkit/gtk dependencies this job does not need.
+      - name: Run tests
+        run: cargo test --manifest-path packages/desktop/src-tauri/Cargo.toml --lib

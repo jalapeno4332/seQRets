@@ -15,7 +15,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Gate the deploy on the crypto suite. app.seqrets.app is the live web app —
+  # a regression in createShares/parseShare must not reach it.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Crypto core tests
+        run: npm test
+
   build-and-deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages

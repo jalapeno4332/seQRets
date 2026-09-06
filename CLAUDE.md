@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Monorepo** (npm workspaces): `src/` (Next.js 16 web), `packages/desktop/` (Tauri 2.10), `packages/crypto/` (shared lib), `packages/shared-ui/` (shadcn primitives consumed by both web + desktop via `@/components/ui/*` path alias), `packages/javacard/` (smart card applet)
 - **License**: AGPL-3.0-or-later
-- **No test runner** — `npm test` is a no-op
+- **Tests**: `npm test` (crypto core, ~30s) · `npm run test:all` adds the Rust suite
 
 ## Dev Commands
 
@@ -19,7 +19,14 @@ npm run build:crypto         # Build @seqrets/crypto (prerequisite for other bui
 npm run build                # Web production build
 npx tsc --noEmit             # Web type check
 npx tsc --noEmit -p packages/desktop/tsconfig.json  # Desktop type check
+npm test                     # Crypto core suite (TS, ~30s) — builds @seqrets/crypto first
+npm run test:rust            # Rust crypto suite incl. TS↔Rust parity vectors
+npm run test:all             # Both
 ```
+
+Tests live in `tests/*.test.mjs` and run against the BUILT `@seqrets/crypto` (dist), so what is
+tested is what ships. Node's built-in runner — no framework, no new dependencies. CI gates the
+web deploy on `npm test`; pull requests additionally run the Rust suite.
 
 ## Shared Code (edit once — no hand-sync)
 
