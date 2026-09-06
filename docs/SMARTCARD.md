@@ -37,7 +37,7 @@ under any circumstances. This is the point people most often get backwards.
 
 | | Wipe protection OFF | Wipe protection ON (default) |
 |---|---|---|
-| Anyone holding the card + a reader | **can factory-reset it, no PIN needed** | blocked |
+| Anyone holding the card + a reader | **can factory-reset it, no PIN needed** | blocked at the applet level — but see the GlobalPlatform caveat below |
 | PIN lost or 5 attempts used up | data unreadable; card can be reset and reused | data unreadable; **card is a paperweight** |
 
 The trade-off is therefore *availability of the share* against *reuse of the plastic*. For a card
@@ -51,6 +51,28 @@ is set (`SW_CONDITIONS_NOT_SATISFIED`), since there would be nothing to authenti
 
 A factory reset clears stored data, the label, the PIN, and the wipe-protection flag itself,
 returning the card to a blank state. It never recovers data; it only makes the hardware reusable.
+
+### ⚠️ Wipe protection depends on card personalisation
+
+Wipe protection is enforced by the applet, and **GlobalPlatform sits underneath the applet.** A card
+still carrying the published default GlobalPlatform key (`40 41 42 … 4F` — every blank JavaCard
+ships with it, and `gp.jar` uses it automatically when given none) can have its applet, and
+therefore all its data, deleted outright with no PIN. Wipe protection does not stop this, because
+the attack is below it.
+
+Verified on hardware 2026-09-06: a card with a PIN set, data stored, and wipe protection **enabled**
+correctly refused `ERASE` at the applet level — and was then wiped anyway by a single GlobalPlatform
+delete.
+
+**So every claim on this page about a card resisting erasure is conditional on that card's
+GlobalPlatform keys having been rotated.** That happens during personalisation, which is a blocking
+step before any card ships — see [PERSONALIZATION.md](PERSONALIZATION.md). A card that has been
+through it rejects the default key outright (`Card cryptogram invalid!`, confirmed independently on
+a second, already-personalised card).
+
+Confidentiality is unaffected either way: reading requires the PIN, and only ciphertext is ever
+written to a card. This is purely an availability property — an unpersonalised card can be
+destroyed or repurposed by whoever holds it, never read.
 
 ## APDU Instruction Set
 

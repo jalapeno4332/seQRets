@@ -501,7 +501,7 @@ That reframes the choice:
 
 | | Wipe protection OFF | Wipe protection ON |
 |---|---|---|
-| Anyone holding the card + a reader | **can erase it, no PIN needed** | blocked |
+| Anyone holding the card + a reader | **can erase it, no PIN needed** | blocked *at the applet level* — see the GlobalPlatform caveat below |
 | PIN lost or 5 retries exhausted | data unreadable; card can be reset and reused | data unreadable; card is unusable hardware |
 
 This is an **availability** property, not a confidentiality one — only ciphertext is ever written to
@@ -517,6 +517,23 @@ across the Smart Card page, the card dialog, the plan builder and Bob's knowledg
 at the same time: it had warned only against *enabling* protection ("expensive coaster") and implied
 that enabling it was what made data unrecoverable. Full APDU table and semantics in
 [`SMARTCARD.md`](SMARTCARD.md).
+
+**⚠️ This guarantee is conditional on card personalisation.** GlobalPlatform sits underneath the
+applet. A card still on the published default GP key (`40 41 42 … 4F`) can have its applet — and all
+its data — deleted with no PIN, regardless of the wipe-protection flag. **Verified on hardware
+2026-09-06:** a card with a PIN, stored data and wipe protection ON refused `ERASE` correctly at the
+applet level, then was wiped by a single GlobalPlatform delete. The applet cannot defend against
+this; it is not in the path. Key rotation during personalisation is therefore a blocking pre-ship
+step — see [PERSONALIZATION.md](PERSONALIZATION.md) — and it also closes hostile-applet installation
+in transit. A personalised card rejects the default key outright, confirmed on a second card.
+Confidentiality is unaffected either way: reads need the PIN, and only ciphertext reaches a card.
+
+**Applet behaviour verified on hardware (2026-09-06)** via `packages/javacard/test/smoke-test.sh`,
+30/30 on a JCOP card: PIN gates reads and writes, the retry counter decrements and resets, wipe
+protection blocks `ERASE` without the PIN and the card survives the attempt intact, and a locked
+card's data is genuinely unreachable while force-erase reclaims the card but never the data. One
+convention note: the applet returns `6982` on a wrong PIN rather than the ISO-conventional `63Cx`;
+the remaining count is exposed through `GET_STATUS` instead.
 
 **Residual, accepted:** a card with no PIN set has no wipe protection available and can be erased by
 anyone. This is inherent — there is no secret to authenticate against — and is why the PIN prompt
@@ -720,9 +737,14 @@ insufficient to spend, but not nothing; the underlying library exposes no wipe f
 
 ### Not verified
 
-The wipe-protection default and its opt-out have **not been exercised against physical hardware** —
-the set-PIN UI only renders with a card present. Type checks, the crypto suites and both production
-builds pass; a card-and-reader smoke test is still outstanding before release.
+**Updated 2026-09-06.** The *applet* is now verified on real hardware (30/30, see the Smart Card
+section) — and that testing found the GlobalPlatform bypass documented there, which reading the
+source had not revealed.
+
+Still outstanding: the **desktop UI flow**. The opt-out Switch and the set-PIN → wipe-protect
+sequence are TypeScript driving those same APDUs, and have not been exercised with a card in the
+reader (the set-PIN UI only renders when a card is present). The applet-level guarantee is proven;
+the UI wiring that is supposed to invoke it is not.
 
 ---
 

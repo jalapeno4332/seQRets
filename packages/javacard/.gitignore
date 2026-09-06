@@ -4,3 +4,6 @@ lib/*.jar
 
 # Build output
 build/
+
+# Manufacturing record — card serials and shipment volumes stay local.
+personalization-log.tsv

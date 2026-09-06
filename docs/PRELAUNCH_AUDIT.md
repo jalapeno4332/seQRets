@@ -90,6 +90,38 @@ web-build. Full `tauri:build` / Rust compile is only needed for batches that tou
 
 ---
 
+## Launch gate — card personalisation · ⏳ OPEN (added 2026-09-06)
+
+**No card ships on factory GlobalPlatform keys.** Blank JavaCards carry the published default key
+(`40 41 42 … 4F`). GlobalPlatform sits *underneath* the applet, so a card on default keys can have
+its applet — and all its data — deleted with no PIN, with wipe protection enabled and powerless to
+stop it.
+
+**Verified on hardware 2026-09-06.** A card with a PIN set, data stored and wipe protection ON
+correctly refused `ERASE` at the applet level, then was wiped anyway by one GlobalPlatform delete.
+This was found by testing, not by reading — the applet source gives no hint of it, because the
+weakness is not in the applet.
+
+It also allows a hostile applet to be installed in transit, which is arguably worse than erasure.
+Confidentiality is unaffected in both cases (reading needs the PIN; only ciphertext reaches a card).
+
+### Blocking gate — before any card reaches a customer
+
+1. Every card goes through `packages/javacard/personalize.sh`: install → 30-check smoke test →
+   random key → rotate → **verify with the new key** → forget it. Owner ruling (2026-09-06): keys
+   are destroyed, not escrowed — seQRets ships one-way, so a retained master key would be a
+   decades-long liability for a capability we would never use.
+2. **Verification sits between rotation and destruction.** You cannot verify a key you have already
+   destroyed. Same failure mode as assuming a purchased certificate means a signed binary.
+3. Run one real card end to end before batching. Log serial + applet commit + QA result; never keys.
+4. Do **not** test that default keys stopped working — a failed GP auth burns an attempt against the
+   security domain and can brick card management, and it proves nothing.
+
+Full runbook: [PERSONALIZATION.md](PERSONALIZATION.md). Wipe-protection claims in
+[SMARTCARD.md](SMARTCARD.md) and SECURITY_ANALYSIS.md are now explicitly conditional on this step.
+
+---
+
 ## Security review follow-ups (2026-09) — 8 findings
 
 Source-code review of the whole repo, 2026-09-05. Explicitly **not** a substitute for a formal
@@ -168,9 +200,17 @@ right lever, and this works on already-flashed applets.
   table. **This closes the `set_wipe_protect` (INS 0x23) / `force_erase_card` documentation gap
   called out in finding 6.**
 
-⚠️ **Still needs a hardware smoke test**: the opt-out Switch and the set-PIN → wipe-protect
-sequence have not been exercised against a real card and reader — the set-PIN UI only renders when
-a card is present. Verify before release.
+✅ **Applet verified on hardware (2026-09-06)** — `packages/javacard/test/smoke-test.sh`, 30/30 on a
+real JCOP card: PIN gates reads, the retry counter decrements and resets correctly, wipe protection
+blocks `ERASE` without the PIN and the card survives the attempt, and a locked card's data is
+genuinely unreachable while force-erase reclaims the card but not the data. Two things the hardware
+taught that reading could not: the applet returns `6982` for a wrong PIN rather than the ISO
+convention `63Cx`, and **wipe protection is bypassable via GlobalPlatform on a card with factory
+keys** — see the card-personalisation launch gate above.
+
+⚠️ **Still open — the desktop UI flow**: the opt-out Switch and the set-PIN → wipe-protect sequence
+are TS driving those same APDUs, and have not been exercised with a card present (the set-PIN UI
+only renders with a card in the reader). The applet-level guarantee is proven; the UI wiring is not.
 
 ### [x] 6 — Doc drift · ✅ CLOSED (2026-09-06)
 Handled as a **re-verification pass, not a header bump** — that header asserts review coverage, so
