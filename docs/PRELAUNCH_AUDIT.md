@@ -208,9 +208,20 @@ taught that reading could not: the applet returns `6982` for a wrong PIN rather 
 convention `63Cx`, and **wipe protection is bypassable via GlobalPlatform on a card with factory
 keys** — see the card-personalisation launch gate above.
 
-⚠️ **Still open — the desktop UI flow**: the opt-out Switch and the set-PIN → wipe-protect sequence
-are TS driving those same APDUs, and have not been exercised with a card present (the set-PIN UI
-only renders with a card in the reader). The applet-level guarantee is proven; the UI wiring is not.
+✅ **Desktop UI flow verified on hardware (2026-09-06)** — driven through the real app against the
+dev card, with the card state checked by APDU after each step rather than trusted from the UI:
+- **Default path:** PIN set with the Switch in its default position → card reports `pinSet=1,
+  wipe=1`. Toast read "Your card is PIN-protected. The PIN is now required to erase it", and a
+  *Wipe Protection · Active* panel appeared. The protection it set is real: `ERASE` without the PIN
+  returned `6982`, and the PIN the UI wrote verified over APDU as exactly the one typed.
+- **Opt-out path:** same flow with the Switch turned off → `pinSet=1, wipe=0`, and the panel
+  rendered the unprotected copy. The helper text under the Switch flips between the two warnings
+  correctly.
+- The Switch resets to ON for a fresh card.
+
+Tooling note for anyone repeating this: background raw-input clicks do not drive Radix components
+reliably in the Tauri WebView — tabs needed a double-click and the Switch did not respond at all
+until full-screen control was used. That is a harness limitation, not an app defect.
 
 ### [x] 6 — Doc drift · ✅ CLOSED (2026-09-06)
 Handled as a **re-verification pass, not a header bump** — that header asserts review coverage, so

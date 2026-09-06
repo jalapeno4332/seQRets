@@ -741,10 +741,13 @@ insufficient to spend, but not nothing; the underlying library exposes no wipe f
 section) — and that testing found the GlobalPlatform bypass documented there, which reading the
 source had not revealed.
 
-Still outstanding: the **desktop UI flow**. The opt-out Switch and the set-PIN → wipe-protect
-sequence are TypeScript driving those same APDUs, and have not been exercised with a card in the
-reader (the set-PIN UI only renders when a card is present). The applet-level guarantee is proven;
-the UI wiring that is supposed to invoke it is not.
+The **desktop UI flow** was subsequently verified the same day, driven through the real app against
+the dev card with the card state read back over APDU after each step: setting a PIN with the Switch
+in its default position produced `pinSet=1, wipe=1` and an `ERASE` that was correctly refused
+without the PIN, while the same flow with the Switch turned off produced `pinSet=1, wipe=0`. Both
+the toast and the wipe-protection panel rendered the state they should.
+
+Nothing from the wipe-protection work is now unverified against hardware.
 
 ---
 
