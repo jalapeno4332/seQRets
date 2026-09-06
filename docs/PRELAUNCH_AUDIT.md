@@ -90,6 +90,73 @@ web-build. Full `tauri:build` / Rust compile is only needed for batches that tou
 
 ---
 
+## Security review follow-ups (2026-09) — 8 findings
+
+Source-code review of the whole repo, 2026-09-05. Explicitly **not** a substitute for a formal
+third-party audit, and only one part of a larger security review still to come. ⚠️ The report
+itself asserted "code-signed binaries" as a shipped feature — it inherited that from these docs
+rather than checking the build config. **Treat doc claims as unverified until checked against
+source**; that is how the overclaim in the Launch gate section above survived so long.
+
+### [x] 1 — Recovery verification gap · ✅ CLOSED (2026-09-06)
+Nothing proved a Qard from the current app opens in the current Recover. The F8 work proved
+0.4.0 → 2.2.0; the direction an heir depends on is the reverse. Closed with committed fixtures
+minted by this app (`npm run fixtures:recover`) and replayed by Recover's own pinned crypto
+(`cd ../Recover && npm test`), gated in Recover's CI and on its Pages deploy. See the
+**Recover Lifeboat Compatibility** section in CLAUDE.md — a format change the shipped Recover
+cannot read is a release blocker, not a fixture to update.
+
+### [x] 2 — seQRets-Releases 404 · ✅ NOT A DEFECT (intentional)
+The repo is private because the product has not launched. **Launch-day sequence:** the repo must
+go public AND at least one release must be PUBLISHED — drafts never resolve to
+`/releases/latest/`, so the updater 404s until both are done.
+
+### [x] 3 + 5 — "100% offline" exceptions / connection-status twin drift · ✅ CLOSED BY DISCLOSURE (owner ruling 2026-09-06)
+Measured, not assumed: desktop `connection-status` sends `HEAD api.coinbase.com` every 5s
+(~720/hr); web pings same-origin `/ping`; `bitcoin-ticker` hits the same Coinbase host every 15s
+on Home + Inheritance; the updater checks GitHub on mount. Exactly one poller mounts per window
+(the header renders one branch, not both) — the rate is 1×/5s, not the 3× a reading of the JSX
+suggests.
+
+**Owner ruling: do NOT change the network behavior.** The product tells users over and over to
+disconnect or use an offline device; a user who wants zero traffic turns off Wi-Fi, and
+everything in the encrypt → split → restore path keeps working. The two Coinbase callers are the
+same price API, so it is one thing to explain, not four. Fixed the *claims* instead:
+- `README.md` — "100% offline-capable — the only optional network call is Bob" was flatly wrong;
+  now names the price server, Bob, and the update check, and points at the Wi-Fi switch.
+- Bob's twins (`ask-bob-flow.ts` / `bob-api.ts`) — the section headed "Honest Summary for Users"
+  claimed "Nothing is ever transmitted anywhere". Narrowed to the true, stronger claim: *your
+  secrets, passwords and keyfiles* are never transmitted.
+
+The twin "drift" in #5 is therefore **intentional and now documented**: web has an origin to ping,
+Tauri does not. Do not "unify" these two by pointing web at a third party.
+
+### [ ] 4 — Force-erase / availability · OPEN
+`force_erase_card` wipes a card with no PIN, and wipe protection defaults OFF
+(`smartcard.rs:666`, `set_wipe_protect` at `:678`). Confidentiality holds — a card carries only
+ciphertext — but a single heir holding one card can silently reduce a 2-of-3 to a 2-of-2. Fix
+direction: default wipe protection on, or have the plan builder warn explicitly. Desktop-only.
+
+### [ ] 6 — Doc drift · OPEN
+`docs/SECURITY_ANALYSIS.md` still says "maintained current through v1.14.3" (we are at v1.15.1)
+and sizes Recover's crypto core at ~200 lines where it is now 432. Two shipping smart-card
+features are in no document at all: `set_wipe_protect` (INS 0x23) and `force_erase_card` —
+`docs/SMARTCARD.md` covers neither. ⚠️ **Do NOT just bump the SECURITY_ANALYSIS.md header** — that
+header asserts review coverage, and nobody has reviewed the v1.15.x work through that lens. It
+needs an actual pass, not an edit. (Flagged twice already and deliberately left alone.)
+
+### [ ] 7 — No test runner · OPEN (partly addressed)
+`npm test` in this repo is still a no-op. Rust unit tests, a Playwright suite and A/B harnesses
+exist but no single command a contributor or auditor can run. Recover now has a real `npm test`
+(finding 1) — this repo does not.
+
+### [x] 8 — Web CSP `unsafe-inline` · ✅ ACCEPTED, see item 1.3 above
+Deferral reasoning holds: zero XSS sinks, and a hash pipeline that blanks the site on mismatch is
+a bad bet for a solo operator. **Do not re-propose.** The only standing note is to keep the
+deferral from calcifying by default.
+
+---
+
 ## Tier 0 — Close before widening the launch
 
 > **✅ ALL COMPLETE (2026-07-04)** — 0.1, 0.2, 0.3, 0.4 all shipped and verified. This is the pre-launch-worthy security set.

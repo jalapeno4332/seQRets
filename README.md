@@ -53,7 +53,7 @@ Official release: coming soon — **<a href="https://seqrets.app" target="_blank
 - **Optional keyfile** as a second factor in addition to the password
 - **Helper tools** — CSPRNG password generator, BIP-39 seed generator, Bitcoin ticker, Bob AI assistant (optional, user-provided Gemini key)
 - **SHA-256 share integrity** — every Qard (web and desktop) embeds a SHA-256 hash and validates it at generation and on restore; corrupted or tampered Qards are detected before decryption. Desktop additionally surfaces a green shield indicator at restore time and prints a truncated fingerprint on physical cards for visual spot-checking.
-- **100% offline-capable** — the only optional network call is Bob
+- **Fully offline-capable** — every cryptographic operation runs locally, and the app is designed to be used with the network disconnected. Your secrets, passwords and keyfiles never leave your machine: no accounts, no servers, no telemetry. While you are online, seQRets does talk to a price server (Coinbase) for the Bitcoin ticker and the connection indicator, Bob talks to Google Gemini when you ask him something, and the desktop app checks GitHub for updates at launch — none of which carries your data. Want none of it? Turn off Wi-Fi. Everything that matters keeps working.
 
 ## 🛟 seQRets Recover — Long-Term Recovery
 
