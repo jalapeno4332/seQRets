@@ -172,14 +172,41 @@ right lever, and this works on already-flashed applets.
 sequence have not been exercised against a real card and reader — the set-PIN UI only renders when
 a card is present. Verify before release.
 
-### [ ] 6 — Doc drift · OPEN
-`docs/SECURITY_ANALYSIS.md` still says "maintained current through v1.14.3" (we are at v1.15.1)
-and sizes Recover's crypto core at ~200 lines where it is now 432. Two shipping smart-card
-features were in no document at all: `set_wipe_protect` (INS 0x23) and `force_erase_card` —
-✅ **both now documented in `docs/SMARTCARD.md`** (PIN/wipe-protection section + APDU table) as part
-of finding 4. What remains here is the SECURITY_ANALYSIS.md drift. ⚠️ **Do NOT just bump the SECURITY_ANALYSIS.md header** — that
-header asserts review coverage, and nobody has reviewed the v1.15.x work through that lens. It
-needs an actual pass, not an edit. (Flagged twice already and deliberately left alone.)
+### [x] 6 — Doc drift · ✅ CLOSED (2026-09-06)
+Handled as a **re-verification pass, not a header bump** — that header asserts review coverage, so
+advancing it without re-checking would have been the same failure it documents. Owner rulings:
+findings documented before any fix, and the header now states its method and limits.
+
+**Phase 1 — every ✅ in "What Has Been Verified" re-run as a command,** and the command recorded in
+the table so future readers can re-run rather than trust. 7 held; 3 needed qualifiers (dev-only
+`dangerouslySetInnerHTML` in `layout.tsx:83`, the opt-in Gemini key in `localStorage`, and a
+dev-only `esbuild` advisory). `cargo audit`: 0 vulnerabilities, 18 transitive informational warnings.
+
+**Two claims in the document were simply false:**
+- A **114-test Playwright suite across 12 spec files** — no config, no specs, no dependency anywhere
+  in the repo. This is where finding 7 got that claim; it had already propagated into an external
+  review. Removed and replaced with the three suites that actually exist.
+- **Code-signed binaries** in the Conclusion and two threat tables — corrected, pointing at the
+  Launch gate section above.
+
+Also corrected: `base64` 0.22 → 0.21.7; Recover's core "~200 lines" → 432; Recover's share format
+string missing `v=1` and `t/n/i`; `@zxing` missing from its inlined deps; the M2 remediation row
+reading as fixed everywhere when the keychain fix was **desktop-only**; and the "Offline operation"
+row now names the ancillary calls per finding 3.
+
+**Phase 2 — reviewed the v1.14.3→v1.15.1 delta**, none of which the doc had mentioned:
+`masterFingerprint()` + `@scure/bip32`, the SeedQR panel, the review-reminder sidecar (reviewed and
+found **sound** — booleans and timestamps only, atomic 0600 writes, `O_NOFOLLOW`, symlink-refusing),
+plan schema v6, and smart-card wipe protection.
+
+**One finding, fixed:** `masterFingerprint()` zeroized the seed but not the `HDKey` derived from it,
+leaving the BIP-32 master private key in the JS heap until GC — below the standard the doc asserts
+for every other crypto buffer. Now wiped in a `finally` via `wipePrivateData()`; verified the
+fingerprint stays readable after wiping, and covered by 4 new tests (37 total). Residual: the
+library leaves `chainCode` in place and exposes no wipe for it.
+
+**Consciously accepted:** the `esbuild` dev-only advisory (clearing it needs a breaking major bump
+of a build-critical dep, and it never reaches shipped code) and the 18 `cargo audit` warnings.
 
 ### [x] 7 — No test runner · ✅ CLOSED (2026-09-06)
 ⚠️ The finding overstated what existed: there was **no Playwright suite and no committed A/B

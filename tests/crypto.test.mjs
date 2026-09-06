@@ -24,6 +24,7 @@ import {
   appendShareHash,
   truncateHash,
   padPayload,
+  masterFingerprint,
   encryptVault,
   decryptVault,
   encryptInstructions,
@@ -339,6 +340,34 @@ describe('vault and plan blobs', () => {
     });
     assert.equal(out.fileName, 'plan.txt');
     assert.equal(Buffer.from(out.fileContent, 'base64').toString(), 'where the qards are');
+  });
+});
+
+// ── BIP-32 master fingerprint ────────────────────────────────────────
+
+describe('masterFingerprint', () => {
+  // The all-zero-entropy 12-word vector. Its XFP is a fixed, publicly known
+  // value, so this also pins that we derive at m/ with an empty passphrase.
+  const VECTOR_12 = `${'abandon '.repeat(11)}about`;
+
+  it('derives the known XFP for the all-zero 12-word vector', () => {
+    assert.equal(masterFingerprint(VECTOR_12), '73C5DA0A');
+  });
+
+  it('stays correct across repeated calls', () => {
+    // Guards the zeroization added alongside this test: the function wipes the
+    // HDKey's private material in a finally block, and must not wipe its way
+    // into returning a wrong (or null) answer the second time round.
+    assert.equal(masterFingerprint(VECTOR_12), masterFingerprint(VECTOR_12));
+  });
+
+  it('returns null for a non-mnemonic instead of throwing', () => {
+    assert.equal(masterFingerprint('not a seed phrase at all'), null);
+    assert.equal(masterFingerprint(''), null);
+  });
+
+  it('ignores surrounding whitespace and repeated spaces', () => {
+    assert.equal(masterFingerprint(`  ${VECTOR_12.replace(/ /g, '   ')}  `), '73C5DA0A');
   });
 });
 

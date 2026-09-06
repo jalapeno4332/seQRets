@@ -202,10 +202,18 @@ export function masterFingerprint(mnemonic: string): string | null {
     const normalized = mnemonic.trim().split(/\s+/).join(' ');
     if (!validateMnemonic(normalized, wordlist)) return null;
     const seed = mnemonicToSeedSync(normalized, '');
-    const hd = HDKey.fromMasterSeed(seed);
-    seed.fill(0);
-    const fp = hd.fingerprint >>> 0;
-    return fp.toString(16).padStart(8, '0').toUpperCase();
+    let hd: HDKey | undefined;
+    try {
+        hd = HDKey.fromMasterSeed(seed);
+        return (hd.fingerprint >>> 0).toString(16).padStart(8, '0').toUpperCase();
+    } finally {
+        seed.fill(0);
+        // The HDKey derived from the seed holds the master private key; only
+        // the 4-byte fingerprint is wanted here, and it stays readable after
+        // wiping. Note the library's wipePrivateData() clears the private key
+        // but leaves chainCode in place — not enough to spend, but not nothing.
+        hd?.wipePrivateData();
+    }
 }
 
 // ── Secret-leak guard (the Bob chat forwards messages to Google Gemini) ──

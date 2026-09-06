@@ -1,9 +1,14 @@
 # seQRets Desktop App — Security Analysis
 
-> **Baseline audit:** April 2026 @ v1.10.7 · **Maintained current through:** v1.14.3 (August 2026) · **Reviewer:** Source-code review via Claude (Anthropic)
-> **Scope:** Full source audit of `packages/desktop/`, `packages/crypto/`, and `src-tauri/` (Rust backend), plus the cross-cutting web + crypto items from the pre-launch hardening pass (see [Pre-Launch Hardening Pass](#pre-launch-hardening-pass-v1107--v1120) below and [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md) for the full checklist).
+> **Baseline audit:** April 2026 @ v1.10.7 · **Re-verified through:** v1.15.1 (September 2026)
 >
-> This is a **living document**, not a frozen snapshot: the baseline finding set (11 items) was established at v1.10.7, and the doc is kept current as remediation lands. It reflects the codebase as of **v1.14.3**; the pre-launch hardening pass was completed at v1.12.0.
+> **Method — read this before trusting anything below.** This is an *AI-assisted source-code review* (Claude, Anthropic) run by the maintainer against this repository. **It is not a third-party security audit.** No external firm has reviewed this code. Treat this document as an engineering record of what was checked, when, and how — not as independent assurance.
+>
+> **Scope:** Full source review of `packages/desktop/`, `packages/crypto/`, and `src-tauri/` (Rust backend), plus the cross-cutting web + crypto items from the pre-launch hardening pass (see [Pre-Launch Hardening Pass](#pre-launch-hardening-pass-v1107--v1120) below and [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md) for the full checklist).
+>
+> **Every ✅ in [What Has Been Verified](#what-has-been-verified) carries the command that produced it**, so any claim here can be re-run instead of believed. That convention exists because it was previously absent, and claims quietly rotted: the September 2026 pass found this document asserting a 114-test Playwright suite that does not exist anywhere in the repository, and crediting the desktop app with code-signed binaries that are not yet configured. A claim nobody can re-run is a claim nobody can catch. See [Post-Audit Changes (v1.15.x)](#post-audit-changes-v115x--re-verification-pass).
+>
+> This is a **living document**, not a frozen snapshot: the baseline finding set (11 items) was established at v1.10.7 and is kept current as remediation lands. It reflects the codebase as of **v1.15.1**; the pre-launch hardening pass was completed at v1.12.0.
 
 ---
 
@@ -53,7 +58,7 @@ The application demonstrates excellent cryptographic engineering with proper alg
 │                                                             │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │  OS-Level Protections                                  │  │
-│  │  • Code-signed binary (Minisign verification)          │  │
+│  │  • Minisign-verified updates (not OS code signing)     │  │
 │  │  • No browser extensions (WebView isolation)           │  │
 │  │  • No network required (fully offline)                 │  │
 │  │  • Camera permission scoped (QR scanning only)         │  │
@@ -214,10 +219,10 @@ The desktop app runs all cryptographic operations in native Rust, providing guar
 | Threat Vector | Web App | Desktop App | Notes |
 |:--------------|:-------:|:-----------:|:------|
 | Malicious browser extensions | ❌ **Exposed** | ✅ **Immune** | Tauri WebView loads no extensions |
-| JavaScript supply-chain attack | ⚠️ Mitigated (strict CSP, no `unsafe-eval`, narrow allowlist) | ✅ **Eliminated** | Bundled, code-signed binary |
+| JavaScript supply-chain attack | ⚠️ Mitigated (strict CSP, no `unsafe-eval`, narrow allowlist) | ✅ **Eliminated** | Bundled binary, downloaded once rather than re-fetched per visit |
 | Memory persistence | ⚠️ JS GC — timing unpredictable | ✅ **Rust zeroize** | Compiler-fence ensures erasure |
-| Binary tampering | N/A | ✅ **Detected** | Code-signed, integrity verified at install |
-| Offline operation | ⚠️ After initial load only | ✅ **Always** | No network required |
+| Binary tampering | N/A | ⚠️ **Partly detected** | Updates are Minisign-signed and verified before install. OS code signing (Gatekeeper/SmartScreen) is **not yet configured** — the first download is not OS-verified |
+| Offline operation | ⚠️ After initial load only | ✅ **Always** | No network is *required* for any operation. Both apps do make ancillary calls when online — a Coinbase price API (ticker + connection indicator), Bob when asked, and the desktop update check. None carry user data; all fail quietly offline. See the README's offline section |
 | Key derivation isolation | ⚠️ JS heap | ✅ **Rust memory** | Key never enters JS in desktop |
 | Clipboard exposure | ⚠️ OS-level risk | ⚠️ OS-level risk | Both platforms share this limitation |
 | Keylogger attacks | ⚠️ OS-level risk | ⚠️ OS-level risk | Requires compromised device |
@@ -263,7 +268,7 @@ The desktop app runs all cryptographic operations in native Rust, providing guar
 | # | Finding | Component | Impact | Fixable? |
 |:-:|---------|-----------|--------|:--------:|
 | M1 | ~~No clipboard auto-clear after copying secrets~~ | Frontend | ~~Copied passwords/seeds persist indefinitely~~ | ✅ **Fixed** |
-| M2 | ~~Bob AI API key stored plaintext in localStorage~~ | `bob-api.ts` | ~~API key readable in localStorage~~ | ✅ **Fixed** |
+| M2 | ~~Bob AI API key stored plaintext in localStorage~~ | `bob-api.ts` (desktop) | ~~API key readable in localStorage~~ | ✅ **Fixed (desktop)** — moved to the OS keychain. **Web is unchanged by design:** the key lives in session memory unless the user ticks "remember", which persists it to `localStorage` |
 | M3 | ~~`console.error` in production crypto code~~ | `crypto.ts` | ~~Stack traces visible in developer console~~ | ✅ **Fixed** |
 | M4 | ~~Source maps shipped in crypto package~~ | `tsup.config.ts` | ~~Exposes original TypeScript source~~ | ✅ **Fixed** |
 
@@ -327,7 +332,7 @@ The desktop app runs all cryptographic operations in native Rust, providing guar
 │  ⚠️ JS memory persistence  secureWipe() + Rust zeroize  │
 │  ⚠️ Clipboard exposure     Auto-clear after 60 seconds   │
 │  ⚠️ Screen recording       Fields masked by default      │
-│  ⚠️ Supply-chain attack    Pinned deps, signed binary    │
+│  ⚠️ Supply-chain attack    Pinned deps, signed updates   │
 │     (desktop)                                            │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
@@ -359,10 +364,11 @@ A class of risk not covered by the standard threat matrix above is **vendor disa
 
 **seQRets Recover** (repository: https://github.com/seQRets/seQRets-Recover) is an independent reference implementation of the seQRets share format, published as a single `recover.html` file. It is:
 
-- **Self-contained** — one HTML file with all dependencies (Argon2id, XChaCha20-Poly1305, Shamir SSS, pako, @scure/bip39) inlined. No CDN references, no runtime network calls.
+- **Self-contained** — one HTML file with all dependencies (Argon2id, XChaCha20-Poly1305, Shamir SSS, pako, @scure/bip39, and @zxing for QR/camera decoding) inlined. No CDN references, no runtime network calls.
 - **Dependency-free at runtime** — requires only a modern web browser. No Node.js, no installer, no OS compatibility layer. Any machine that can render HTML and run JavaScript can run Recover.
-- **Independently auditable** — ~200 lines of TypeScript implementing the documented share format (`seQRets|<base64 salt>|<base64 nonce+ciphertext>|sha256:<hex>`). The format is plaintext, self-describing, and could be reimplemented from scratch in any language in an afternoon.
+- **Independently auditable** — a 432-line TypeScript core implementing the documented share format (`seQRets|<base64 salt>|<base64 nonce+ciphertext>[|v=1][|t=K|n=N|i=I]|sha256:<hex>`). The format is plaintext, self-describing, and could be reimplemented from scratch in any language in an afternoon.
 - **Integrity-verifiable** — every GitHub release publishes the SHA-256 hash of `recover.html`, allowing holders to verify copies handed to heirs before trusting them with real credentials.
+- **Continuously proven against this app** — Recover's own CI replays Qards minted by the current seQRets through Recover's deliberately older pinned crypto (`@noble/ciphers` 0.4.0 vs. 2.2.0 here), so "an heir can still open it" is a test result rather than an assumption. Its GitHub Pages deploy is gated on that suite.
 - **Offline-first by design** — the release instructions explicitly direct users to disconnect from the network before opening the file, and the HTML ships with a Content-Security-Policy that refuses network requests.
 
 ### Threat Eliminated
@@ -413,7 +419,7 @@ Recover mitigates but does not eliminate long-horizon risk. Users are still resp
 | `flate2` | 1.x | Gzip compression | ✅ Current |
 | `tauri` | 2.11 | App framework | ✅ Current |
 | `keyring` | 3.x | OS keychain (API-key storage) | ✅ Current |
-| `base64` | 0.22 | Encoding | ✅ Current |
+| `base64` | 0.21.7 | Encoding | ✅ Current (0.22 is available; no security delta) |
 
 ### JavaScript Dependencies (Crypto Package)
 
@@ -422,6 +428,7 @@ Recover mitigates but does not eliminate long-horizon risk. Users are still resp
 | `@noble/ciphers` | 2.2.0 | XChaCha20-Poly1305 | ✅ Audited (Paul Miller) — see upgrade note |
 | `@noble/hashes` | 1.8.0 | Argon2id, randomBytes | ✅ Audited (Paul Miller) |
 | `@scure/bip39` | 1.6.0 | BIP-39 mnemonic validation | ✅ Audited (Paul Miller) |
+| `@scure/bip32` | 1.7.0 | BIP-32 master fingerprint (XFP) only — no key derivation or signing | ✅ Audited (Paul Miller) |
 | `shamir-secret-sharing` | 0.0.4 | Shamir's Secret Sharing | ✅ Audited (Cure53 + Zellic) |
 | `pako` | 2.1.0 | Gzip compression | ✅ Widely used |
 
@@ -430,10 +437,14 @@ Recover mitigates but does not eliminate long-horizon risk. Users are still resp
 ### Audit Results
 
 ```
-  npm audit (web app):     0 vulnerabilities ✅
-  npm audit (crypto pkg):  0 vulnerabilities ✅
-  cargo audit (Rust):      No known advisories ✅
+  npm audit --omit=dev:    0 vulnerabilities                          ✅
+  npm audit (full tree):   1 low, development-only (esbuild, Windows) ⚠️
+  cargo audit (Rust):      0 vulnerabilities / 567 crates             ✅
+                           18 informational warnings, all transitive  ⚠️
 ```
+
+Both ⚠️ rows are qualified in detail in [What Has Been Verified](#what-has-been-verified); neither
+reaches shipped code. Re-run dates and commands live there rather than here.
 
 ---
 
@@ -475,7 +486,41 @@ Recover mitigates but does not eliminate long-horizon risk. Users are still resp
 | PIN retry counter | ✅ | 5 attempts, then card locks |
 | Data encrypted before card write | ✅ | Only ciphertext touches the card |
 | Multi-item support | ✅ | JSON array format, 240-byte chunking |
-| Card reset (factory erase) | ⚠️ | Available without PIN (for recovery) |
+| Card reset (factory erase) | ✅ | PIN-gated by default (unreleased, on `main`) — see below |
+
+### Wipe Protection and the Availability Trade-off
+
+The applet gates `ERASE_DATA` (INS `0x04`) on PIN verification only when its `wipeProtected` flag
+is set; the flag itself is set through `SET_WIPE_PROTECT` (INS `0x23`), which requires a PIN to
+already exist and be verified. `wipeProtected` is `false` at applet install.
+
+The point that is easy to get backwards — and that this project's own UI got backwards until
+commit `e618d77` — is that **`READ_DATA` is PIN-gated unconditionally.** A card whose PIN is lost cannot be
+read under any circumstances. So a factory reset never recovers the *data*; it recovers the *card*.
+That reframes the choice:
+
+| | Wipe protection OFF | Wipe protection ON |
+|---|---|---|
+| Anyone holding the card + a reader | **can erase it, no PIN needed** | blocked |
+| PIN lost or 5 retries exhausted | data unreadable; card can be reset and reused | data unreadable; card is unusable hardware |
+
+This is an **availability** property, not a confidentiality one — only ciphertext is ever written to
+a card, so an erase cannot disclose anything. But for a card holding one Qard of a K-of-N
+inheritance set, an unprotected card can be wiped by whoever happens to hold it, silently raising
+the number of remaining Qards an heir must find. A single heir could reduce a 2-of-3 to a 2-of-2
+with no trace.
+
+**Resolution (commit `e618d77`, unreleased at time of writing):** wipe protection is now enabled in the same operation that sets the PIN,
+with an opt-out presented alongside the PIN fields. No applet change was required — protection only
+becomes possible once a PIN exists — so this applies to already-flashed cards. The surrounding copy
+across the Smart Card page, the card dialog, the plan builder and Bob's knowledge base was corrected
+at the same time: it had warned only against *enabling* protection ("expensive coaster") and implied
+that enabling it was what made data unrecoverable. Full APDU table and semantics in
+[`SMARTCARD.md`](SMARTCARD.md).
+
+**Residual, accepted:** a card with no PIN set has no wipe protection available and can be erased by
+anyone. This is inherent — there is no secret to authenticate against — and is why the PIN prompt
+now leads the card-setup flow.
 
 ---
 
@@ -602,6 +647,85 @@ Separate from the 11 baseline findings above, a comprehensive read-only security
 
 ---
 
+## Post-Audit Changes (v1.15.x) — Re-Verification Pass
+
+**2026-09-06.** This document had drifted to v1.14.3 while the code moved to v1.15.1. Rather than
+advance the header — which asserts review coverage — the claims were re-run and the intervening
+code was read. Two of the four things this pass found wrong were assertions in this file itself.
+
+### Corrections to this document
+
+- **A Playwright suite that does not exist.** The Testing section described "114 tests across 12
+  spec files… 342 total test runs" with a thirteen-item coverage list. There is no Playwright
+  configuration, no spec file and no dependency anywhere in the repository. Removed, and replaced
+  with the three suites that do exist and run in CI. *This claim had already propagated: an external
+  review inherited it and reported the project as having an E2E suite.*
+- **Code-signed binaries.** The Conclusion credited the desktop app with "code-signed binary
+  integrity". OS code signing is not configured — every `APPLE_*` and `WINDOWS_CERTIFICATE` line in
+  the release workflow is commented out. Corrected here and across the user-facing surfaces; the
+  blocking launch gate lives in [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md).
+- **Verification claims are now re-runnable.** Every row of *What Has Been Verified* carries its
+  command. Three that were flat ✅s are now qualified: the dev-only `dangerouslySetInnerHTML`, the
+  opt-in Gemini API key in `localStorage`, and the dev-only `esbuild` advisory.
+- **Factual drift:** `base64` was listed as 0.22 (actually 0.21.7); Recover's crypto core as
+  "~200 lines" (actually 432); Recover's share format omitted the `v=1` marker and `t/n/i`
+  metadata; its inlined-dependency list omitted `@zxing`.
+
+### Surfaces reviewed for the first time
+
+Code shipped between v1.14.3 and v1.15.1 that this document did not mention at all:
+
+- **`masterFingerprint()` + `@scure/bip32`** — a new cryptographic dependency and a new code path
+  handling raw seed material. One finding, fixed (below). The dependency is used *only* for the
+  4-byte BIP-32 fingerprint: no key derivation, no signing, no address generation.
+- **SeedQR panel** (seed generator and both restore forms) — renders seed material as an 800 px
+  data-URL PNG held in component state. Blurred by default behind an explicit reveal control. This
+  is the already-documented screen-capture residual rather than a new class, but it is a new
+  surface and is now named.
+- **Review-reminder sidecar** — reviewed and found **sound**. The file holds only booleans, an
+  interval and timestamps: no secrets, no labels, no plan content. The Rust side writes atomically
+  (temp + rename) at mode `0600`, opens with `O_NOFOLLOW`, and refuses to read or write anything
+  that is not a regular file, which blocks symlink redirection. Opt-in and local-only.
+- **Inheritance plan schema v6** and its PDF export. The export is deliberately post-decryption —
+  an owner ruling, recorded in the plan-schema notes — and is unchanged by this pass.
+- **Smart card wipe protection / force erase** — see
+  [Wipe Protection and the Availability Trade-off](#wipe-protection-and-the-availability-trade-off).
+
+### Finding, and its fix
+
+**Master private key retained after fingerprint derivation** · *Low* · `packages/crypto/src/crypto.ts`
+· **fixed**
+
+`masterFingerprint()` zeroized the 64-byte seed but not the `HDKey` derived from it, leaving the
+BIP-32 master private key and chain code in the JS heap until garbage collection. Reachable only
+from within the same process — no exfiltration path — but below the standard this document asserts
+for every other crypto buffer, and below what the function already did one line earlier.
+
+The derivation now runs in `try`/`finally`, wiping the seed and calling `hd.wipePrivateData()` on
+every path. Verified that the fingerprint remains readable after wiping, so the fix costs nothing,
+and covered by four new tests including a repeat-call test that would catch a wipe which broke the
+result. **Residual:** `wipePrivateData()` clears the private key but leaves `chainCode` in place —
+insufficient to spend, but not nothing; the underlying library exposes no wipe for it.
+
+### Consciously accepted
+
+- **`esbuild` low-severity advisory** ([GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr)) —
+  development server only, Windows only, never shipped code. Clearing it needs a breaking major bump
+  of a build-critical dependency; not worth forcing for a risk that does not reach users.
+- **18 `cargo audit` informational warnings** — unmaintained/unsound notices on transitive crates,
+  effectively all of them the GTK3 bindings Tauri pulls in for Linux. Not reachable from seQRets
+  code paths.
+- **Hash-based CSP for the web app** — unchanged deferral, reasoning in
+  [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md) item 1.3.
+
+### Not verified
+
+The wipe-protection default and its opt-out have **not been exercised against physical hardware** —
+the set-PIN UI only renders with a card present. Type checks, the crypto suites and both production
+builds pass; a card-and-reader smoke test is still outstanding before release.
+
+---
+
 ## Post-Audit Changes (v1.14.0)
 
 A pre-launch external review raised three format/exposure weaknesses; all three are closed in v1.14.0. Because Qards are frozen artifacts (printed cards, steel plates), these were the last changes of their kind that could ship cheaply.
@@ -645,54 +769,61 @@ All 11 baseline findings are resolved, and the pre-launch hardening pass (above)
 
 ## Testing & Verification
 
-### Cryptographic Test Coverage
+### Automated Test Suites
 
-The Rust backend includes unit tests verifying:
+Three suites, each runnable with a single command, and each wired into CI.
 
-- ✅ Round-trip encryption/decryption (with and without keyfile)
-- ✅ Wrong password correctly rejected (MAC verification failure)
-- ✅ Different encryptions of same data produce different ciphertexts (random salt + nonce)
-- ✅ Wire format compatibility between Rust and JavaScript implementations — **now a permanent parity test** (`ts-parity-vectors.json`) that runs on every `cargo test`, so a future divergence between the TS and Rust crypto fails CI rather than shipping
-- ✅ Compression/decompression integrity
-- ✅ `@noble/ciphers` cross-version decrypt (0.4.0-produced ciphertext decrypts on 2.2.0)
+**1. Crypto core — TypeScript** (`npm test`, 37 tests, ~35s)
 
-### End-to-End Test Suite (Playwright)
+Runs against the *built* `@seqrets/crypto`, so what is tested is what ships to both apps. Node's built-in test runner; no framework and no test-only dependencies. Beyond round-trips it pins the format invariants that the rest of this document and `CLAUDE.md` assert:
 
-114 tests across 12 spec files, run against 3 browser projects (Chromium, iPhone 14, iPad Mini) = 342 total test runs. Coverage includes:
+- the SHA-256 covers everything before `|sha256:`, so the documented `shasum` verification recipe works by hand
+- the hash is located by content, so the legacy v1.11.0 hash-in-the-middle layout still verifies
+- legacy 3-segment shares report `hashValid: null`, never `false` — "predates hashing" must not read as "damaged"
+- a `v=` above `SHARE_FORMAT_VERSION` throws an update-your-software error rather than misparsing a frozen artifact
+- contradictory or partial `t/n/i` trios are nulled without breaking the restore itself
+- payload padding fills to 192-byte buckets with **zero bytes only** (non-zero padding breaks pako, and therefore breaks already-printed Qards)
+- Shamir reconstructs from a *non-leading* subset of shares
+- the keyfile is genuinely part of the derived key
+- the BIP-32 master fingerprint is stable across repeated calls, which guards the zeroization in `masterFingerprint()`
 
-- ✅ Full encrypt → Shamir split → QR code generation roundtrip
-- ✅ BIP-39 mnemonic validation and optimization
-- ✅ Password validation (length, character classes, boundary cases)
-- ✅ Shamir parameter validation (threshold ≤ shares)
-- ✅ Restore flow (manual share entry, duplicate detection, credential entry)
-- ✅ Navigation and routing (all routes, 404, deep URLs, back/forward)
-- ✅ Edge cases (XSS payloads, unicode/emoji, null bytes, 10K+ char secrets, rapid clicks)
-- ✅ Zero console errors on all pages
-- ✅ Responsive layout at 375px, 768px, and 1280px viewports
-- ✅ LocalStorage resilience (corrupted data, missing keys, oversized values)
-- ✅ External link integrity (Go Pro, shop upsells, rel=noopener)
-- ✅ Bob AI chat input validation
+The suite was validated by mutation rather than assumed: three deliberate defects injected into `crypto.ts` (non-zero padding, disabled version gate, no `t/n/i` nulling) produced 8 failures across 5 suites.
+
+**2. Crypto core — Rust** (`npm run test:rust`, 10 tests)
+
+Round-trip encryption with and without a keyfile, wrong-password rejection at the AEAD tag, distinct ciphertexts for identical plaintext, padding bucket lengths, and **TS↔Rust wire parity** against committed fixtures (`src-tauri/tests/fixtures/ts-parity-vectors.json`) so a divergence between the two implementations fails rather than ships.
+
+**3. Cross-version recovery** (`cd ../Recover && npm test`, 21 checks)
+
+Lives in the [seQRets Recover](https://github.com/seQRets/seQRets-Recover) repository. Recover is deliberately pinned to older crypto than this app (`@noble/ciphers` 0.4.0 / `@noble/hashes` 1.4.0 vs. 2.2.0 / 1.8.0), so the suite replays Qards minted by *this* app through *those* pins — proving a Qard created today opens in the recovery tool an heir would actually use. Covers current and both historical share shapes, mnemonics, keyfiles, encrypted plans, and the failure modes an heir must be able to tell apart (tampering vs. wrong password vs. mismatched sets vs. outdated tool).
+
+**CI.** `deploy.yml` gates the web deploy on suite 1; `tests.yml` runs suites 1 and 2 on every pull request; Recover's own CI gates its GitHub Pages deploy on suite 3.
+
+> **Correction (September 2026).** This section previously described an "End-to-End Test Suite (Playwright)" of "114 tests across 12 spec files… 342 total test runs" with a thirteen-item coverage list. **No such suite exists in this repository** — no Playwright configuration, no spec files, no dependency. The claim appears to have described exploratory work that was never committed. It is removed rather than corrected, and the suites above are what actually exist and run.
 
 ### What Has Been Verified
 
-| Check | Result |
-|-------|:------:|
-| No `unsafe` blocks in Rust codebase | ✅ Verified |
-| No `eval()` or `dangerouslySetInnerHTML` in frontend | ✅ Verified |
-| No `Math.random()` for cryptographic operations | ✅ Verified |
-| All crypto buffers have zeroization in finally blocks | ✅ Verified |
-| npm audit: 0 vulnerabilities | ✅ Verified |
-| No API routes or server-side code | ✅ Verified |
-| No secrets stored in localStorage | ✅ Verified |
-| Drag-drop disabled in Tauri config | ✅ Verified |
-| Update signatures verified via Minisign | ✅ Verified |
-| Debug logging disabled in release builds | ✅ Verified |
+Re-run 2026-09-06 against v1.15.1. Each row carries the command, so these can be re-checked rather than trusted. Commands are run from the repository root.
 
----
+| Check | Result | How to re-run |
+|-------|:------:|---------------|
+| No `unsafe` blocks in Rust | ✅ 0 hits | `grep -rn 'unsafe' packages/desktop/src-tauri/src/*.rs` |
+| No `Math.random()` in crypto code | ✅ 0 hits | `grep -rn 'Math.random' packages/crypto/src packages/desktop/src-tauri/src` |
+| No API routes or server-side code | ✅ 0 handlers, static export | `find src -name 'route.ts'` · `grep output next.config.ts` |
+| Drag-drop disabled in Tauri config | ✅ `false` | `grep dragDropEnabled packages/desktop/src-tauri/tauri.conf.json` |
+| Update signatures verified via Minisign | ✅ pubkey + updater artifacts configured | `grep -n 'pubkey\|createUpdaterArtifacts' packages/desktop/src-tauri/tauri.conf.json` |
+| Debug logging absent from shipped code | ✅ 0 `console.log` in web, desktop and crypto sources | `grep -rn 'console\.log' src packages/desktop/src packages/crypto/src` |
+| Source maps disabled in production | ✅ crypto `false`; desktop gated on `TAURI_DEBUG` | `grep -n sourcemap packages/crypto/tsup.config.ts packages/desktop/vite.config.ts` |
+| Crypto buffers zeroized in `finally` blocks | ✅ 7 `finally` blocks, 26 `fill(0)` calls | `grep -c 'fill(0)' packages/crypto/src/crypto.ts` |
+| No `eval()` or `dangerouslySetInnerHTML` | ⚠️ **Qualified** — one occurrence, `src/app/layout.tsx:83`: a **development-only** static script (guarded by `NODE_ENV === 'development'`) that unregisters the service worker against the dev server. Static literal, no interpolation, stripped from production builds. No `eval()` in first-party code. | `grep -rn 'dangerouslySetInnerHTML' src packages/desktop/src packages/shared-ui/src` |
+| No secrets stored in `localStorage` | ⚠️ **Qualified** — no seQRets secret material (seeds, passwords, keyfiles, shares) is ever persisted. The **web** app can persist a user-supplied *Gemini API key* to `localStorage`, but only if the user opts in via the "remember" checkbox; the default is session-memory only (`setSessionApiKey`). Desktop stores it in the OS keychain instead. | `grep -rn 'localStorage.setItem' src packages/desktop/src packages/shared-ui/src` |
+| `npm audit` | ⚠️ **Qualified** — **0 vulnerabilities in production dependencies.** The full tree reports **1 low-severity, development-only** advisory: `esbuild` ≤ 0.28.0 arbitrary file read via the dev server on Windows ([GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr)). It affects the local development server only, never shipped code. Clearing it requires a breaking major bump of a build-critical dependency; **consciously accepted** rather than forced. On-disk `esbuild` is 0.27.7, deduped to a single copy. | `npm audit --omit=dev` · `npm audit` |
+| `cargo audit` | ✅ **0 vulnerabilities** across 567 crate dependencies. 18 informational warnings (unmaintained/unsound), effectively all transitive: the GTK3 bindings Tauri pulls in for Linux builds, plus `proc-macro-error`, the `unic-*` family, and unsoundness notes in `glib` and `lru`. None are reachable from seQRets code paths. | `cd packages/desktop/src-tauri && cargo audit` |
+
 
 ## Conclusion
 
-seQRets demonstrates **strong cryptographic engineering** with a well-designed zero-knowledge architecture. The desktop app provides meaningful security advantages over the web version through Rust-native cryptography, compiler-guaranteed memory erasure, browser extension immunity, and code-signed binary integrity.
+seQRets demonstrates **strong cryptographic engineering** with a well-designed zero-knowledge architecture. The desktop app provides meaningful security advantages over the web version through Rust-native cryptography, compiler-guaranteed memory erasure, browser-extension immunity, and a binary downloaded once rather than re-fetched through a CDN on every visit. (OS-level code signing is **not** yet configured — see the launch gate in [`PRELAUNCH_AUDIT.md`](PRELAUNCH_AUDIT.md). Updates are signed with Minisign and verified before installation; that is a different guarantee from Gatekeeper/SmartScreen trust.)
 
 The 11 findings identified in this analysis were primarily configuration hardening opportunities (CSP, source maps) and edge-case robustness improvements (chunk overflow, clipboard clearing) — **none compromised the core cryptographic guarantees** of the application. **All 11 findings have been resolved.** Additionally, the password generator now guarantees at least one character from each required class (lowercase, uppercase, digit, special) via Fisher-Yates shuffle, eliminating the ~2.3% chance of generating an invalid password.
 
