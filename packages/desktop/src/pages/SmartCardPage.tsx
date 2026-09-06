@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   AlertDialog,
@@ -107,6 +108,10 @@ export default function SmartCardPage() {
   const [newPinInput, setNewPinInput] = useState('');
   const [confirmPinInput, setConfirmPinInput] = useState('');
   const [isSettingPin, setIsSettingPin] = useState(false);
+  // Wipe protection is enabled alongside the PIN by default: an unprotected
+  // card can be factory-reset by anyone holding it, which silently turns a
+  // 2-of-3 set into a 2-of-2. Opt-out lives next to the PIN fields.
+  const [protectOnSetPin, setProtectOnSetPin] = useState(true);
   const [newPinVisible, setNewPinVisible] = useState(false);
 
   // ── Change PIN state ─────────────────────────────────────────────
@@ -247,7 +252,30 @@ export default function SmartCardPage() {
     try {
       await setPin(selectedReader, newPinInput);
       setVerifiedPin(newPinInput);
-      toast({ title: 'PIN Set', description: 'Your card is now PIN-protected.' });
+
+      // Wipe protection can only be turned on once a PIN exists, so this is
+      // the moment to do it. If it fails the PIN is still set — say so rather
+      // than reporting a blanket failure, or the user re-runs Set PIN against
+      // a card that already has one.
+      let protectionOn = false;
+      if (protectOnSetPin) {
+        try {
+          await setWipeProtect(selectedReader, newPinInput, true);
+          protectionOn = true;
+        } catch (e: any) {
+          setActionError(
+            `Your PIN was set, but wipe protection could not be enabled: ${e?.toString() ?? 'unknown error'}. `
+            + 'You can enable it below.',
+          );
+        }
+      }
+
+      toast({
+        title: 'PIN Set',
+        description: protectionOn
+          ? 'Your card is PIN-protected. The PIN is now required to erase it.'
+          : 'Your card is now PIN-protected. It can still be erased without the PIN.',
+      });
       setNewPinInput('');
       setConfirmPinInput('');
       await loadCardStatus(undefined, newPinInput);
@@ -997,6 +1025,38 @@ export default function SmartCardPage() {
                     <p className="text-xs text-muted-foreground">
                       Use a mix of upper/lowercase letters, numbers, and symbols for a strong PIN.
                     </p>
+
+                    <div className="rounded-lg border p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <Label htmlFor="protect-on-set-pin" className="text-sm font-medium leading-snug">
+                          Require this PIN to erase the card
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">Recommended</span>
+                        </Label>
+                        <Switch
+                          id="protect-on-set-pin"
+                          checked={protectOnSetPin}
+                          onCheckedChange={setProtectOnSetPin}
+                          disabled={isSettingPin}
+                          aria-label="Require this PIN to erase the card"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {protectOnSetPin ? (
+                          <>
+                            Nobody can wipe this card without the PIN. <strong>Keep the PIN safe:</strong> if you
+                            lose it, or use up all 5 attempts, the card can never be read or erased again &mdash;
+                            it becomes a paperweight, and whatever is stored on it is gone.
+                          </>
+                        ) : (
+                          <>
+                            <strong>Anyone holding this card can erase it</strong> with a card reader &mdash; no PIN
+                            needed. Losing the PIN still makes the data unreadable; leaving this off only means the
+                            card itself can be wiped and reused.
+                          </>
+                        )}
+                      </p>
+                    </div>
+
                     <div className="flex flex-wrap gap-2">
                       <Button
                         variant="outline"
@@ -1071,8 +1131,8 @@ export default function SmartCardPage() {
                 </CardTitle>
                 <CardDescription>
                   {cardStatus.wipe_protected
-                    ? 'PIN verification is required to erase this card. The card cannot be factory-reset without the PIN.'
-                    : 'When enabled, the card cannot be erased without PIN verification — protecting data from physical tampering.'}
+                    ? 'The PIN is required to erase this card. Nobody can factory-reset it without the PIN — and if the PIN is lost, the card can never be read or erased again.'
+                    : 'Right now this card can be erased by anyone holding it, using any card reader — no PIN needed. Turn this on to require the PIN before the card can be wiped.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1080,9 +1140,10 @@ export default function SmartCardPage() {
                   <Alert className="border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5">
                     <AlertTriangle className="h-4 w-4 text-amber-500" />
                     <AlertDescription className="text-sm">
-                      <strong>Warning:</strong> If you enable wipe protection and later forget your PIN or exhaust
-                      all 5 PIN attempts, the card becomes an expensive coaster; <strong>permanently unusable</strong>.
-                      Only enable this if you have other copies of your backup data.
+                      <strong>This card is not protected from erasure.</strong> Anyone who holds it can factory-reset
+                      it with a card reader &mdash; no PIN needed, and no trace left behind. If it is one of several
+                      Qards in an inheritance set, losing it that way quietly raises the number of remaining Qards
+                      your heirs must find.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1118,12 +1179,23 @@ export default function SmartCardPage() {
                       </AlertDialogTitle>
                       <AlertDialogDescription>
                         {cardStatus.wipe_protected
-                          ? 'The card will be erasable without PIN verification. Anyone with physical access and a reader can wipe the card.'
+                          ? (
+                            <>
+                              The PIN will no longer be needed to erase this card. Anyone holding it, with any card
+                              reader, will be able to wipe it.
+                              <br /><br />
+                              This does not make the stored data any easier to reach &mdash; reading still requires
+                              the PIN. It only makes the card destroyable, and reusable.
+                            </>
+                          )
                           : (
                             <>
-                              PIN verification will be required to erase this card. This protects your data from physical tampering.
+                              The PIN will be required to erase this card. Nobody can wipe it without the PIN.
                               <br /><br />
-                              <strong>If you forget your PIN or exhaust all 5 attempts, the card becomes permanently inaccessible and all data is unrecoverable.</strong>
+                              <strong>Keep the PIN safe. If you lose it, or use up all 5 attempts, this card can
+                              never be read or erased again &mdash; it becomes a paperweight, and whatever is stored
+                              on it is gone.</strong> Losing the PIN already makes the data unreadable; this only
+                              removes the option of wiping the card to reuse it.
                             </>
                           )}
                       </AlertDialogDescription>
@@ -1296,10 +1368,10 @@ export default function SmartCardPage() {
                 </CardTitle>
                 <CardDescription>
                   {needsPinUnlock && cardStatus.wipe_protected
-                    ? 'This card is locked and has wipe protection enabled. It cannot be erased without PIN verification. If all retries are exhausted, the card is permanently inaccessible.'
+                    ? 'This card is locked, and the PIN is required to erase it. Without the PIN it can be neither read nor erased. If all 5 attempts are used up, the card is a paperweight and the data on it is gone.'
                     : needsPinUnlock
-                    ? 'This card is locked. Factory reset will erase all data and remove the PIN, returning the card to a usable state.'
-                    : 'Completely erase this card — removes all stored data AND the PIN. The card will be returned to a blank, unprotected state.'}
+                    ? 'This card is locked, so the data on it can no longer be read. A factory reset erases everything and removes the PIN, returning the card to a blank, reusable state — it does not recover the data.'
+                    : 'Completely erase this card — removes all stored data AND the PIN. The card will be returned to a blank, unprotected state that anyone can write to or wipe.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

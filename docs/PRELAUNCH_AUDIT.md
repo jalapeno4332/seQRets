@@ -131,17 +131,53 @@ same price API, so it is one thing to explain, not four. Fixed the *claims* inst
 The twin "drift" in #5 is therefore **intentional and now documented**: web has an origin to ping,
 Tauri does not. Do not "unify" these two by pointing web at a third party.
 
-### [ ] 4 — Force-erase / availability · OPEN
-`force_erase_card` wipes a card with no PIN, and wipe protection defaults OFF
-(`smartcard.rs:666`, `set_wipe_protect` at `:678`). Confidentiality holds — a card carries only
-ciphertext — but a single heir holding one card can silently reduce a 2-of-3 to a 2-of-2. Fix
-direction: default wipe protection on, or have the plan builder warn explicitly. Desktop-only.
+### [x] 4 — Force-erase / availability · ✅ CLOSED (2026-09-06)
+`force_erase_card` wipes a card with no PIN, and `wipeProtected` defaults to `false` at applet
+install (`SeQRetsApplet.java:88`), so any holder of a card could factory-reset it.
+
+**Key fact the finding (and our own UI) had backwards:** `READ_DATA` is PIN-gated, so **losing the
+PIN destroys the data whether or not wipe protection is on**. A locked card cannot be read under
+any circumstances. `force_erase_card` recovers the *plastic*, never the *secret*. The real
+trade-off is therefore availability of the share vs. reuse of the hardware:
+
+| | Wipe protection OFF | Wipe protection ON |
+|---|---|---|
+| Holder + a reader | **can wipe it, no PIN** | blocked |
+| PIN lost / 5 tries used | data unreadable, card reusable | data unreadable, card is a paperweight |
+
+For a card holding one Qard of an inheritance set that is not a close call — an unprotected card
+can be wiped by whoever holds it, quietly turning a 2-of-3 into a 2-of-2 with nothing to show it
+happened.
+
+**Owner ruling (2026-09-06): protection ON by default, and say so everywhere.** No applet change
+was needed — wipe protection only becomes possible once a PIN exists, so the desktop flow is the
+right lever, and this works on already-flashed applets.
+
+- `SmartCardPage` — setting a PIN now enables wipe protection in the same operation, with a
+  clearly-labelled opt-out Switch beside the PIN fields whose helper text flips to state the
+  actual consequence of each choice. If the protect call fails the PIN is still set, and the error
+  says so rather than reporting a blanket failure.
+- Copy corrected wherever it appeared: the wipe-protection card's amber alert now warns about
+  being *unprotected* (it previously argued only against turning protection **on**), the toggle
+  dialog no longer implies enabling costs you your data, and the factory-reset and locked-card
+  strings distinguish "the card is reusable" from "the data is recoverable".
+- Bob's twins — 4 lines each, still describing it as "opt-in" and repeating the same conflation.
+  Rewritten, verified byte-identical.
+- `inheritance-plan-form` — the PIN-lockout warning now covers both directions.
+- `docs/SMARTCARD.md` — new "PIN, Wipe Protection, and Factory Reset" section plus a full APDU
+  table. **This closes the `set_wipe_protect` (INS 0x23) / `force_erase_card` documentation gap
+  called out in finding 6.**
+
+⚠️ **Still needs a hardware smoke test**: the opt-out Switch and the set-PIN → wipe-protect
+sequence have not been exercised against a real card and reader — the set-PIN UI only renders when
+a card is present. Verify before release.
 
 ### [ ] 6 — Doc drift · OPEN
 `docs/SECURITY_ANALYSIS.md` still says "maintained current through v1.14.3" (we are at v1.15.1)
 and sizes Recover's crypto core at ~200 lines where it is now 432. Two shipping smart-card
-features are in no document at all: `set_wipe_protect` (INS 0x23) and `force_erase_card` —
-`docs/SMARTCARD.md` covers neither. ⚠️ **Do NOT just bump the SECURITY_ANALYSIS.md header** — that
+features were in no document at all: `set_wipe_protect` (INS 0x23) and `force_erase_card` —
+✅ **both now documented in `docs/SMARTCARD.md`** (PIN/wipe-protection section + APDU table) as part
+of finding 4. What remains here is the SECURITY_ANALYSIS.md drift. ⚠️ **Do NOT just bump the SECURITY_ANALYSIS.md header** — that
 header asserts review coverage, and nobody has reviewed the v1.15.x work through that lens. It
 needs an actual pass, not an edit. (Flagged twice already and deliberately left alone.)
 

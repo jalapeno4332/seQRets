@@ -553,7 +553,7 @@ export function InheritancePlanForm({ plan, onChange, readOnly = false }: Inheri
                 <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Smart Card & Vault Backup</h5>
                 <div className="flex items-start gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-500/30 dark:border-yellow-500/20 text-xs text-yellow-800 dark:text-yellow-300">
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
-                  <span><strong>PIN lockout.</strong> After 5 wrong attempts the card locks permanently. If wipe protection is enabled, the data becomes permanently inaccessible.</span>
+                  <span><strong>PIN lockout.</strong> After 5 wrong attempts the card locks permanently and its data can no longer be read &mdash; record the PIN above and make sure whoever needs it can actually reach it. With wipe protection on (the default) the card cannot be erased either, so a lost PIN turns it into a paperweight. With wipe protection off, anyone who holds the card can erase it &mdash; losing that Qard without warning and raising the number your heirs must still find.</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">

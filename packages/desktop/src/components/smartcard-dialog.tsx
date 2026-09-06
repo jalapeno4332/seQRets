@@ -457,8 +457,8 @@ export function SmartCardDialog({
                   <p className="font-semibold">This card is permanently locked.</p>
                   <p className="text-xs">
                     {cardStatus.wipe_protected
-                      ? 'All PIN attempts have been exhausted and wipe protection is enabled. This card is permanently inaccessible — it cannot be erased or read.'
-                      : 'All PIN attempts have been exhausted. The card must be factory reset before it can be used again. Factory reset will erase ALL data on the card.'}
+                      ? 'All PIN attempts have been used up, and the PIN is required to erase this card. It can no longer be read or erased — the card is a paperweight and the data on it is gone.'
+                      : 'All PIN attempts have been used up, so the data on this card can no longer be read. A factory reset will erase everything and return the card to a blank, reusable state — it does not recover the data.'}
                   </p>
                 </AlertDescription>
               </Alert>
@@ -590,7 +590,7 @@ export function SmartCardDialog({
               className="text-red-600 border-red-300 hover:bg-red-50 dark:border-red-500/40 dark:hover:bg-red-500/10"
             >
               <Trash2 className="mr-1 h-3 w-3" />
-              {needsPinVerification && cardStatus?.wipe_protected ? 'Wipe Protected' : needsPinVerification ? 'Factory Reset' : 'Erase Card'}
+              {needsPinVerification && cardStatus?.wipe_protected ? 'PIN Required to Erase' : needsPinVerification ? 'Factory Reset' : 'Erase Card'}
             </Button>
           )}
 
