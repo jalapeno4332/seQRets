@@ -4,14 +4,37 @@ The desktop app supports storing Shamir shares, encrypted vaults, keyfiles, and 
 
 ## Hardware Requirements
 
-- **Card:** JCOP3 J3H145 or compatible JavaCard 3.0.4+ smartcard (~110 KB usable EEPROM)
+- **Card:** JCOP3 J3H145 or compatible JavaCard 3.0.4+ smartcard, **delivered unlocked** (default
+  GlobalPlatform keys — a card with vendor-set keys cannot be personalised; see
+  [PERSONALIZATION.md](PERSONALIZATION.md))
 - **Reader:** Any PC/SC-compatible USB smart card reader
+
+### Card capacity is not the constraint — the applet is
+
+**A bigger card buys nothing.** The applet allocates a fixed 8 KB array at install time and never
+uses more, whatever the card's EEPROM happens to be:
+
+```java
+private static final short MAX_DATA_SIZE = (short) 8192;
+storedData = new byte[MAX_DATA_SIZE];
+```
+
+`GET_STATUS` reports that constant as the card's capacity, so the app displays 8192 bytes on a
+J3H145 exactly as it would on a far larger card. Verified on hardware: a J3H145 reports `cap=8192`.
+
+Nor is raising it a one-line change. Every offset in the applet is a JavaCard `short` — 16-bit
+**signed**, so 32767 is the ceiling for a single array addressed this way. Going beyond ~32 KB would
+mean restructuring the chunking and offset scheme, not just editing the constant. A card advertising
+180 KB is more than 20× what the current design can address.
+
+So when sourcing cards, choose on **interface** (contact vs. dual-interface/NFC), **chip generation
+and availability lifetime**, and **whether they ship unlocked** — never on EEPROM size.
 
 ## Features
 
 - **Write individual shares**, **full vaults**, **keyfiles**, or **encrypted inheritance plans** to a card via APDU over PC/SC
 - **Read back** shares, vaults, or keyfiles directly from a card into the restore workflow
-- **Multi-item storage** — store multiple items (shares, vaults, keyfiles, instructions) on a single card up to ~8 KB; new writes append to existing data
+- **Multi-item storage** — store multiple items (shares, vaults, keyfiles, instructions) on a single card up to the applet's fixed 8 KB (see [above](#card-capacity-is-not-the-constraint--the-applet-is)); new writes append to existing data
 - **Per-item management** — view, select, and delete individual items from the Smart Card Manager page
 - **Optional PIN protection** (8-16 characters) — card locks after 5 wrong attempts
 - **PIN retry countdown** — real-time display of remaining PIN attempts (color-coded: gray → amber → red) across both the Smart Card Manager page and the smart card dialog
