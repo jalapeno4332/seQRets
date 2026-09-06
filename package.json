@@ -10,6 +10,7 @@
     "generate:version": "node scripts/generate-version.mjs",
     "sync:web-assets": "node scripts/sync-web-assets.mjs",
     "build:crypto": "npm run build --workspace=@seqrets/crypto",
+    "fixtures:recover": "npm run build:crypto && node scripts/generate-recover-fixtures.mjs",
     "dev": "npm run generate:version && npm run sync:web-assets && npm run build:crypto && next dev --port 9002",
     "build": "npm run generate:version && npm run sync:web-assets && npm run build:crypto && next build",
     "start": "npm run generate:version && next start",

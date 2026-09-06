@@ -76,6 +76,33 @@ Qards serialize as `seQRets|<salt>|<nonce+ciphertext>|v=1[|t=K|n=N|i=I]|sha256:<
 
 Helpers in [packages/crypto/src/crypto.ts](packages/crypto/src/crypto.ts): `computeShareHash`, `appendShareHash`, `parseShare`, `truncateHash`. Hash is validated at generation and on restore; tampered Qards are rejected before decryption. Desktop surfaces a green shield indicator and prints a truncated fingerprint on physical cards for visual spot-checking (premium-only UI). When recovery metadata is present, both web and desktop restore forms show a per-set countdown ("X of K added — Y more required"). Card visuals do **not** print K/N — by design, that info lives in the QR data only.
 
+## Recover Lifeboat Compatibility (hard invariant)
+
+The **seQRets Recover** lifeboat (`../Recover`, separate repo) is deliberately pinned to
+OLDER crypto than this app — `@noble/ciphers` 0.4.0 / `@noble/hashes` 1.4.0 vs. this repo's
+2.2.0 / 1.8.0. That divergence is intentional: a lifeboat that chases dependency bumps can
+break in a year nobody is watching.
+
+**The invariant: a Qard created by this app must open in the current Recover.** It is the
+single most important promise in the product — every other guarantee is downstream of an
+heir actually getting the secret back.
+
+That is enforced by committed fixtures, not by hope:
+
+```bash
+npm run fixtures:recover     # mint real Qards here → ../Recover/tests/fixtures/qards.json
+cd ../Recover && npm test    # replay them through Recover's older pinned crypto
+```
+
+**Regenerate the fixtures whenever** the share format changes (`SHARE_FORMAT_VERSION`,
+padding, metadata segments, payload shape), this app's crypto dependencies move, or you cut
+a release — then review the diff and commit it in the Recover repo. Recover's CI runs the
+suite on every PR and its GitHub Pages deploy is gated on it.
+
+If a format change genuinely cannot be read by the shipped Recover, that is a **release
+blocker**, not a fixture to update: bump `SHARE_FORMAT_VERSION` so old copies fail loudly
+with "update your recovery tool" instead of misparsing, and ship a matching Recover first.
+
 ## Common Gotchas
 
 - `getApiKey()` is async on desktop (keychain IPC) — handle `null` pending state
